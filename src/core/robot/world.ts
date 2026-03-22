@@ -22,7 +22,7 @@ export class RobotWorld {
     })
   }
 
-  clone() { return new RobotWorld(structuredClone(this.data)) }
+  clone() { return new RobotWorld(JSON.parse(JSON.stringify(this.data))) }
   isCellPainted() { return this.data.paint[this.data.robot.y][this.data.robot.x] }
   paint() { this.data.paint[this.data.robot.y][this.data.robot.x] = true }
   togglePaint(x: number, y: number) { this.data.paint[y][x] = !this.data.paint[y][x] }
