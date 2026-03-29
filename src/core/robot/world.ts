@@ -33,4 +33,33 @@ export class RobotWorld {
   isWallBottom(x = this.data.robot.x, y = this.data.robot.y) { return this.data.hWalls[y + 1][x] }
   isWallLeft(x = this.data.robot.x, y = this.data.robot.y) { return this.data.vWalls[y][x] }
   isWallRight(x = this.data.robot.x, y = this.data.robot.y) { return this.data.vWalls[y][x + 1] }
+
+  resizeTo(width: number, height: number) {
+    const next = RobotWorld.create(width, height)
+
+    for (let y = 0; y < Math.min(this.data.height, height); y += 1) {
+      for (let x = 0; x < Math.min(this.data.width, width); x += 1) {
+        next.data.paint[y][x] = this.data.paint[y][x]
+      }
+    }
+
+    for (let y = 0; y < Math.min(this.data.height, height); y += 1) {
+      for (let x = 1; x < Math.min(this.data.width, width); x += 1) {
+        next.data.vWalls[y][x] = this.data.vWalls[y][x]
+      }
+    }
+
+    for (let y = 1; y < Math.min(this.data.height, height); y += 1) {
+      for (let x = 0; x < Math.min(this.data.width, width); x += 1) {
+        next.data.hWalls[y][x] = this.data.hWalls[y][x]
+      }
+    }
+
+    next.data.robot = {
+      x: Math.min(this.data.robot.x, width - 1),
+      y: Math.min(this.data.robot.y, height - 1),
+    }
+
+    this.data = next.data
+  }
 }
