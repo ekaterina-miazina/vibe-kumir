@@ -12,9 +12,44 @@ test('app runs example without console errors', async ({ page }) => {
   await page.goto('/')
   await expect(page.getByRole('heading', { name: 'ВайбКумир' })).toBeVisible()
   await page.getByRole('button', { name: 'Запустить' }).click()
-  await expect(page.locator('pre')).toContainText('done')
+  await expect(page.getByTestId('runtime-log')).toContainText('done')
   expect(consoleErrors).toEqual([])
   expect(pageErrors).toEqual([])
+})
+
+test('documentation page opens, copies examples, and returns to the main screen', async ({ page }) => {
+  await page.addInitScript(() => {
+    let copiedText = ''
+    Object.defineProperty(navigator, 'clipboard', {
+      configurable: true,
+      value: {
+        writeText: async (value: string) => {
+          copiedText = value
+        },
+      },
+    })
+    ;(window as Window & { __copiedExample?: () => string }).__copiedExample = () => copiedText
+  })
+
+  await page.goto('/')
+  await page.getByTestId('open-docs-link').click()
+
+  await expect(page).toHaveURL(/\/docs$/)
+  await expect(page.getByRole('heading', { name: 'Документация по языку' })).toBeVisible()
+  await expect(page.getByText('Поддерживаемые инструкции')).toBeVisible()
+  await expect(page.getByTestId('docs-example-move-to-wall')).toBeVisible()
+
+  await page.getByTestId('copy-example-move-to-wall').click()
+  await expect(page.getByTestId('copy-example-move-to-wall')).toHaveText('Скопировано')
+  await expect
+    .poll(() => page.evaluate(() => (window as Window & { __copiedExample?: () => string }).__copiedExample?.() ?? ''))
+    .toContain(`алг до_стены`)
+
+  await page.getByTestId('back-to-main-link').click()
+  await expect(page).toHaveURL(/\/$/)
+  await expect(page.getByRole('heading', { name: 'ВайбКумир' })).toBeVisible()
+  await page.getByRole('button', { name: 'Запустить' }).click()
+  await expect(page.getByTestId('runtime-log')).toContainText('done')
 })
 
 test('app follows the system theme when there is no saved preference', async ({ page }) => {
@@ -58,7 +93,7 @@ test('theme switching keeps the main workflow usable', async ({ page }) => {
   await expect(page.getByTestId('world-grid')).toBeVisible()
 
   await page.getByRole('button', { name: 'Запустить' }).click()
-  await expect(page.locator('pre')).toContainText('done')
+  await expect(page.getByTestId('runtime-log')).toContainText('done')
 })
 
 test('editor shows line numbers and parse errors include the source line', async ({ page }) => {
