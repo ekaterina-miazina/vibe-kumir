@@ -79,6 +79,8 @@ Default local dev server:
 
 - Write commit messages in Russian.
 - Prefer descriptive commit messages that briefly explain what was changed, rather than terse generic summaries.
+- Do not create or use feature branches for this project. Make all commits directly on `main`.
+- Do not open pull requests on GitHub for this project.
 
 ## Change checklist
 
