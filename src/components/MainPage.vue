@@ -37,6 +37,24 @@ const examples = {
 кон`,
 }
 
+const latestNews = [
+  {
+    date: '05.04.2026',
+    title: 'Большое обновление редактора и поля Робота',
+    items: [
+      'Добавлена отдельная страница с документацией по языку и переход к ней с главной страницы.',
+      'Появились светлая, тёмная и системная темы оформления.',
+      'Теперь можно менять фон поля Робота прямо в режиме редактирования обстановки.',
+      'Добавлен масштаб поля: можно увеличивать, уменьшать и быстро возвращаться к 100%.',
+      'В редакторе появились автоотступы по Enter и Tab, чтобы код набирался быстрее.',
+      'Ошибки синтаксиса теперь подчёркиваются прямо в редакторе.',
+      'Добавлены номера строк и более понятные сообщения об ошибках с указанием строки.',
+      'Улучшено редактирование обстановки: удобнее ставить стены, красить клетки и задавать позицию робота.',
+      'Обновлены иконки приложения и русскоязычный заголовок страницы.',
+    ],
+  },
+] as const
+
 const code = ref(examples.line)
 const world = ref(RobotWorld.create(6, 4))
 const draftWorld = ref<RobotWorld | null>(null)
@@ -626,6 +644,22 @@ function getFieldRobotRingColor(value: string) {
         <li v-for="error in formattedRuntimeErrors" :key="error">{{ error }}</li>
       </ul>
     </section>
+
+    <section class="panel news-panel" aria-labelledby="whats-new-title">
+      <div class="news-header">
+        <h2 id="whats-new-title">Что нового</h2>
+        <p>Короткий список заметных изменений в последних обновлениях.</p>
+      </div>
+      <article v-for="entry in latestNews" :key="entry.date" class="news-entry">
+        <div class="news-entry-meta">
+          <span class="news-date">{{ entry.date }}</span>
+          <h3>{{ entry.title }}</h3>
+        </div>
+        <ul class="news-list">
+          <li v-for="item in entry.items" :key="item">{{ item }}</li>
+        </ul>
+      </article>
+    </section>
   </div>
 </template>
 
@@ -717,6 +751,52 @@ main { grid-template-columns: minmax(320px, 1.1fr) minmax(320px, 1fr); }
   backdrop-filter: blur(18px);
 }
 .panel h2 { margin: 0 0 16px; }
+.news-panel {
+  display: grid;
+  gap: 18px;
+}
+.news-header {
+  display: grid;
+  gap: 6px;
+}
+.news-header p {
+  margin: 0;
+  color: var(--muted-text);
+}
+.news-entry {
+  display: grid;
+  gap: 14px;
+  padding: 18px;
+  border: 1px solid var(--secondary-border);
+  border-radius: 16px;
+  background: var(--instruction-background);
+}
+.news-entry-meta {
+  display: grid;
+  gap: 6px;
+}
+.news-entry-meta h3 {
+  margin: 0;
+  font-size: 1.05rem;
+}
+.news-date {
+  display: inline-flex;
+  width: fit-content;
+  min-height: 30px;
+  align-items: center;
+  padding: 0 10px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--accent-color) 14%, transparent);
+  color: var(--accent-color);
+  font-size: 0.9rem;
+  font-weight: 700;
+}
+.news-list {
+  margin: 0;
+  padding-left: 20px;
+  display: grid;
+  gap: 8px;
+}
 .editor-shell {
   --editor-line-height: 1.5;
   --editor-padding: 16px;
