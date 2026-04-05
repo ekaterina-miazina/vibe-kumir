@@ -241,6 +241,35 @@ test('save keeps resized world, walls, paint, and robot position', async ({ page
   await expect(originCell).toHaveAttribute('data-bottom-wall', 'true')
 })
 
+test('field background can be previewed, saved, and reset to the theme color', async ({ page }) => {
+  await page.goto('/')
+  await page.getByLabel('Тема оформления').selectOption('light')
+
+  const cell = page.getByTestId('cell-0-0')
+  const backgroundInput = page.getByLabel('Фон поля')
+
+  await expect(cell).toHaveCSS('background-color', 'rgb(247, 251, 255)')
+
+  await page.getByRole('button', { name: 'Редактировать обстановку' }).click()
+  await backgroundInput.evaluate((element: HTMLInputElement, value: string) => {
+    element.value = value
+    element.dispatchEvent(new Event('input', { bubbles: true }))
+    element.dispatchEvent(new Event('change', { bubbles: true }))
+  }, '#c8facc')
+
+  await expect(cell).toHaveCSS('background-color', 'rgb(200, 250, 204)')
+
+  await page.getByRole('button', { name: 'Сохранить' }).click()
+  await expect(cell).toHaveCSS('background-color', 'rgb(200, 250, 204)')
+
+  await page.getByRole('button', { name: 'Редактировать обстановку' }).click()
+  await page.getByRole('button', { name: 'По теме' }).click()
+  await expect(cell).toHaveCSS('background-color', 'rgb(247, 251, 255)')
+
+  await page.getByRole('button', { name: 'Сохранить' }).click()
+  await expect(cell).toHaveCSS('background-color', 'rgb(247, 251, 255)')
+})
+
 test('field zoom changes visible cell size', async ({ page }) => {
   await page.goto('/')
 

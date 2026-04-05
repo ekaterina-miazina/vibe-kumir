@@ -43,12 +43,18 @@ const defaultWorldZoom = 100
 const baseCellSize = 88
 const worldZoom = ref(defaultWorldZoom)
 const themeStorageKey = 'vibe-kumir-theme'
+const defaultFieldBackgrounds = {
+  light: '#f7fbff',
+  dark: '#13203f',
+} as const
 
 type ThemePreference = 'system' | 'light' | 'dark'
 type ResolvedTheme = 'light' | 'dark'
 
 const themePreference = ref<ThemePreference>('system')
 const systemTheme = ref<ResolvedTheme>(getSystemTheme())
+const fieldBackground = ref<string | null>(null)
+const draftFieldBackground = ref<string | null>(null)
 
 const parsedProgram = computed(() => parseProgram(code.value))
 const lineNumbers = computed(() => Array.from({ length: code.value.split('\n').length }, (_, index) => index + 1))
@@ -60,6 +66,16 @@ const highlightedEditorLines = computed(() => buildEditorLines(code.value, parse
 const resolvedTheme = computed<ResolvedTheme>(() =>
   themePreference.value === 'system' ? systemTheme.value : themePreference.value,
 )
+const defaultFieldBackground = computed(() => defaultFieldBackgrounds[resolvedTheme.value])
+const visibleFieldBackground = computed(() =>
+  (isEditMode.value ? draftFieldBackground.value : fieldBackground.value) ?? defaultFieldBackground.value,
+)
+const editFieldBackground = computed({
+  get: () => draftFieldBackground.value ?? defaultFieldBackground.value,
+  set: (value: string) => {
+    draftFieldBackground.value = normalizeHexColor(value)
+  },
+})
 const lineNumbersStyle = computed(() => ({
   transform: `translateY(${-editorScrollTop.value}px)`,
 }))
@@ -68,6 +84,9 @@ const editorOverlayStyle = computed(() => ({
 }))
 const worldGridStyle = computed(() => ({
   '--cell-size': `${Math.round((baseCellSize * worldZoom.value) / 100)}px`,
+  '--field-cell-background': visibleFieldBackground.value,
+  '--field-cell-text': getFieldTextColor(visibleFieldBackground.value),
+  '--field-robot-ring': getFieldRobotRingColor(visibleFieldBackground.value),
   gridTemplateColumns: `repeat(${visibleWorld.value.data.width}, var(--cell-size))`,
   '--wall-hit-area': `${Math.max(12, Math.round((baseCellSize * worldZoom.value * 0.18) / 100))}px`,
   '--corner-dead-zone': `${Math.max(12, Math.round((baseCellSize * worldZoom.value * 0.18) / 100))}px`,
@@ -127,6 +146,8 @@ function run() {
 function reset() {
   world.value = RobotWorld.create(6, 4)
   draftWorld.value = null
+  fieldBackground.value = null
+  draftFieldBackground.value = null
   isEditMode.value = false
   resizeWidth.value = world.value.data.width
   resizeHeight.value = world.value.data.height
@@ -136,6 +157,7 @@ function reset() {
 
 function enterEditMode() {
   draftWorld.value = world.value.clone()
+  draftFieldBackground.value = fieldBackground.value
   resizeWidth.value = draftWorld.value.data.width
   resizeHeight.value = draftWorld.value.data.height
   isEditMode.value = true
@@ -191,7 +213,9 @@ function onCellContextMenu(event: MouseEvent, x: number, y: number) {
 function saveEdits() {
   if (!draftWorld.value) return
   world.value = draftWorld.value.clone()
+  fieldBackground.value = draftFieldBackground.value
   draftWorld.value = null
+  draftFieldBackground.value = null
   isEditMode.value = false
   resizeWidth.value = world.value.data.width
   resizeHeight.value = world.value.data.height
@@ -199,9 +223,15 @@ function saveEdits() {
 
 function cancelEdits() {
   draftWorld.value = null
+  draftFieldBackground.value = null
   isEditMode.value = false
   resizeWidth.value = world.value.data.width
   resizeHeight.value = world.value.data.height
+}
+
+function resetFieldBackground() {
+  if (!isEditMode.value) return
+  draftFieldBackground.value = null
 }
 
 function hasVerticalWall(x: number, y: number) {
@@ -398,6 +428,38 @@ function getSystemTheme(): ResolvedTheme {
 function onSystemThemeChange(event: MediaQueryListEvent) {
   systemTheme.value = event.matches ? 'dark' : 'light'
 }
+
+function normalizeHexColor(value: string) {
+  const normalized = value.trim().toLowerCase()
+  return /^#[\da-f]{6}$/.test(normalized) ? normalized : defaultFieldBackground.value
+}
+
+function parseHexColor(value: string) {
+  const normalized = normalizeHexColor(value)
+  const match = /^#([\da-f]{2})([\da-f]{2})([\da-f]{2})$/i.exec(normalized)
+  if (!match) return null
+
+  return {
+    red: Number.parseInt(match[1], 16),
+    green: Number.parseInt(match[2], 16),
+    blue: Number.parseInt(match[3], 16),
+  }
+}
+
+function isDarkColor(value: string) {
+  const color = parseHexColor(value)
+  if (!color) return false
+  const brightness = (color.red * 299 + color.green * 587 + color.blue * 114) / 1000
+  return brightness < 150
+}
+
+function getFieldTextColor(value: string) {
+  return isDarkColor(value) ? '#eef6ff' : '#24405f'
+}
+
+function getFieldRobotRingColor(value: string) {
+  return isDarkColor(value) ? '#f8fafc' : '#18304f'
+}
 </script>
 
 <template>
@@ -516,6 +578,18 @@ function onSystemThemeChange(event: MediaQueryListEvent) {
             <label>Ширина <input v-model.number="resizeWidth" type="number" min="2" /></label>
             <label>Высота <input v-model.number="resizeHeight" type="number" min="2" /></label>
             <button @click="applyResize">Применить размер</button>
+          </div>
+          <div class="tool-group field-background-controls">
+            <label>
+              Фон поля
+              <input
+                v-model="editFieldBackground"
+                data-testid="field-background-input"
+                aria-label="Фон поля"
+                type="color"
+              />
+            </label>
+            <button type="button" class="secondary-action" @click="resetFieldBackground">По теме</button>
           </div>
           <div class="tool-group edit-actions">
             <button @click="saveEdits">Сохранить</button>
@@ -765,8 +839,8 @@ textarea {
   aspect-ratio: 1 / 1;
   border-radius: 0;
   border-style: solid;
-  background: var(--cell-background);
-  color: var(--cell-text);
+  background: var(--field-cell-background, var(--cell-background));
+  color: var(--field-cell-text, var(--cell-text));
   position: relative;
   overflow: visible;
   padding: clamp(6px, calc(var(--cell-size) * 0.11), 10px);
@@ -781,7 +855,7 @@ textarea {
   pointer-events: none;
 }
 .cell.painted { background: var(--painted-cell-background); color: var(--painted-cell-text); }
-.cell.robot { box-shadow: inset 0 0 0 2px var(--robot-ring); }
+.cell.robot { box-shadow: inset 0 0 0 2px var(--field-robot-ring, var(--robot-ring)); }
 .robot-icon {
   position: absolute;
   left: 50%;
@@ -813,6 +887,15 @@ textarea {
   border: 1px solid var(--input-border);
   border-radius: 8px;
   padding: 4px 8px;
+}
+.field-background-controls label { display: inline-flex; align-items: center; gap: 8px; }
+.field-background-controls input {
+  width: 48px;
+  min-width: 48px;
+  height: 38px;
+  padding: 4px;
+  border-radius: 10px;
+  cursor: pointer;
 }
 .errors { color: var(--error-text); }
 .errors li + li { margin-top: 4px; }
