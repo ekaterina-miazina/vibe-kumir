@@ -667,6 +667,18 @@ function getFieldRobotRingColor(value: string) {
 <style scoped>
 .app-shell { max-width: 1440px; margin: 0 auto; padding: 24px; display: grid; gap: 20px; }
 header, main { display: grid; gap: 20px; }
+.app-shell > *,
+header > *,
+main > *,
+.panel,
+.news-panel,
+.news-entry,
+.brand-block,
+.toolbar,
+.tool-group,
+.edit-tools {
+  min-width: 0;
+}
 header { grid-template-columns: minmax(0, 1fr) auto; align-items: start; }
 header h1 { margin: 0; font-size: clamp(2rem, 2.8vw, 2.8rem); }
 header p { margin: 8px 0 0; color: var(--muted-text); }
@@ -867,6 +879,7 @@ textarea {
   position: relative;
   z-index: 1;
   width: 100%;
+  min-width: 0;
   background: transparent;
   color: transparent;
   caret-color: var(--editor-caret);
@@ -984,13 +997,121 @@ textarea {
   padding: 16px;
 }
 @media (max-width: 900px) {
+  .app-shell {
+    padding: 16px;
+    gap: 16px;
+  }
+
   main,
   header {
     grid-template-columns: 1fr;
   }
 
+  .panel {
+    padding: 16px;
+  }
+
+  .toolbar,
+  .edit-tools .tool-group {
+    justify-content: stretch;
+  }
+
+  .toolbar > *,
+  .edit-tools .tool-group > * {
+    flex: 1 1 100%;
+  }
+
   .toolbar {
-    justify-content: flex-start;
+    gap: 10px;
+  }
+
+  .theme-select,
+  .toolbar select,
+  .toolbar button,
+  .nav-link,
+  .zoom-range {
+    width: 100%;
+    max-width: none;
+  }
+
+  .nav-link {
+    justify-content: center;
+  }
+
+  .line-numbers,
+  .editor-pane,
+  textarea {
+    min-height: 340px;
+  }
+
+  .line-numbers {
+    width: 60px;
+  }
+
+  .line-numbers-content {
+    padding-inline: 10px;
+  }
+
+  .zoom-range {
+    flex-basis: 100%;
+  }
+
+  .resize-controls label,
+  .field-background-controls label {
+    width: 100%;
+    justify-content: space-between;
+  }
+
+  .field-background-controls input {
+    flex: 0 0 auto;
+  }
+}
+
+@media (max-width: 640px) {
+  .app-shell {
+    padding: 12px;
+    gap: 14px;
+  }
+
+  header,
+  main {
+    gap: 14px;
+  }
+
+  header h1 {
+    font-size: clamp(1.75rem, 8vw, 2.2rem);
+  }
+
+  .panel {
+    padding: 14px;
+    border-radius: 18px;
+  }
+
+  .editor-shell {
+    --editor-padding: 12px;
+    --editor-font: 14px/var(--editor-line-height) 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
+  }
+
+  .line-numbers,
+  .editor-pane,
+  textarea {
+    min-height: 300px;
+  }
+
+  .line-numbers {
+    width: 52px;
+  }
+
+  .line-numbers-content {
+    padding: var(--editor-padding) 8px var(--editor-padding) 10px;
+  }
+
+  .zoom-value {
+    min-width: 0;
+  }
+
+  .grid-scroll {
+    padding: 2px;
   }
 }
 </style>

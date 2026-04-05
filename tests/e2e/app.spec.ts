@@ -326,3 +326,23 @@ test('field zoom changes visible cell size', async ({ page }) => {
   await page.getByRole('button', { name: '100%' }).click()
   await expect(page.getByTestId('world-zoom-value')).toHaveText('100%')
 })
+
+test('main screen fits mobile viewport without horizontal overflow', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 })
+  await page.goto('/')
+
+  const layout = await page.evaluate(() => ({
+    viewportWidth: window.innerWidth,
+    documentWidth: document.documentElement.scrollWidth,
+    bodyWidth: document.body.scrollWidth,
+    appShellWidth: document.querySelector('.app-shell')?.getBoundingClientRect().width ?? 0,
+    headerWidth: document.querySelector('header')?.getBoundingClientRect().width ?? 0,
+    mainWidth: document.querySelector('main')?.getBoundingClientRect().width ?? 0,
+  }))
+
+  expect(layout.documentWidth).toBeLessThanOrEqual(layout.viewportWidth + 1)
+  expect(layout.bodyWidth).toBeLessThanOrEqual(layout.viewportWidth + 1)
+  expect(layout.headerWidth).toBeLessThanOrEqual(layout.appShellWidth + 1)
+  expect(layout.mainWidth).toBeLessThanOrEqual(layout.appShellWidth + 1)
+  await expect(page.getByRole('button', { name: 'Запустить' })).toBeVisible()
+})
