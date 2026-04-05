@@ -36,6 +36,11 @@ const editorScrollLeft = ref(0)
 const isEditMode = ref(false)
 const resizeWidth = ref(world.value.data.width)
 const resizeHeight = ref(world.value.data.height)
+const minWorldZoom = 60
+const maxWorldZoom = 160
+const defaultWorldZoom = 100
+const baseCellSize = 88
+const worldZoom = ref(defaultWorldZoom)
 
 const parsedProgram = computed(() => parseProgram(code.value))
 const lineNumbers = computed(() => Array.from({ length: code.value.split('\n').length }, (_, index) => index + 1))
@@ -50,6 +55,13 @@ const lineNumbersStyle = computed(() => ({
 const editorOverlayStyle = computed(() => ({
   transform: `translate(${-editorScrollLeft.value}px, ${-editorScrollTop.value}px)`,
 }))
+const worldGridStyle = computed(() => ({
+  '--cell-size': `${Math.round((baseCellSize * worldZoom.value) / 100)}px`,
+  gridTemplateColumns: `repeat(${visibleWorld.value.data.width}, var(--cell-size))`,
+  '--wall-hit-area': `${Math.max(12, Math.round((baseCellSize * worldZoom.value * 0.18) / 100))}px`,
+  '--corner-dead-zone': `${Math.max(12, Math.round((baseCellSize * worldZoom.value * 0.18) / 100))}px`,
+}))
+const worldZoomLabel = computed(() => `${worldZoom.value}%`)
 
 function loadExample(key: keyof typeof examples) {
   code.value = examples[key]
@@ -94,6 +106,22 @@ function applyResize() {
   targetWorld.resizeTo(Math.max(2, resizeWidth.value), Math.max(2, resizeHeight.value))
   resizeWidth.value = targetWorld.data.width
   resizeHeight.value = targetWorld.data.height
+}
+
+function updateWorldZoom(nextZoom: number) {
+  worldZoom.value = Math.min(maxWorldZoom, Math.max(minWorldZoom, nextZoom))
+}
+
+function increaseWorldZoom() {
+  updateWorldZoom(worldZoom.value + 10)
+}
+
+function decreaseWorldZoom() {
+  updateWorldZoom(worldZoom.value - 10)
+}
+
+function resetWorldZoom() {
+  updateWorldZoom(defaultWorldZoom)
 }
 
 function onCellAction(x: number, y: number) {
@@ -335,6 +363,39 @@ function syncEditorScroll() {
       <section class="panel">
         <h2>Поле Робота</h2>
 
+        <div class="tool-group world-zoom-controls">
+          <span class="zoom-label">Масштаб поля</span>
+          <button
+            type="button"
+            :disabled="worldZoom <= minWorldZoom"
+            aria-label="Уменьшить масштаб поля"
+            @click="decreaseWorldZoom"
+          >
+            -
+          </button>
+          <label class="zoom-range">
+            <span class="sr-only">Масштаб поля</span>
+            <input
+              v-model.number="worldZoom"
+              data-testid="world-zoom-slider"
+              type="range"
+              :min="minWorldZoom"
+              :max="maxWorldZoom"
+              step="10"
+            />
+          </label>
+          <button
+            type="button"
+            :disabled="worldZoom >= maxWorldZoom"
+            aria-label="Увеличить масштаб поля"
+            @click="increaseWorldZoom"
+          >
+            +
+          </button>
+          <button type="button" class="secondary-action" @click="resetWorldZoom">100%</button>
+          <output class="zoom-value" data-testid="world-zoom-value">{{ worldZoomLabel }}</output>
+        </div>
+
         <div v-if="isEditMode" class="edit-tools">
           <div class="edit-instructions">
             <p>Левый клик по клетке: закрасить или снять закраску.</p>
@@ -352,52 +413,54 @@ function syncEditorScroll() {
           </div>
         </div>
 
-        <div class="grid" :style="{ gridTemplateColumns: `repeat(${visibleWorld.data.width}, 1fr)` }">
-          <template v-for="(row, y) in visibleWorld.data.paint" :key="`row-${y}`">
-            <button
-              v-for="(cell, x) in row"
-              :key="`${x}-${y}`"
-              class="cell"
-              :class="{ painted: cell, robot: isRobotCell(x, y), editing: isEditMode }"
-              :style="cellStyle(x, y)"
-              :data-testid="`cell-${x}-${y}`"
-              :data-cell="`${x},${y}`"
-              :data-painted="cell ? 'true' : 'false'"
-              :data-robot="isRobotCell(x, y) ? 'true' : 'false'"
-              :data-top-wall="hasHorizontalWall(x, y) ? 'true' : 'false'"
-              :data-bottom-wall="hasHorizontalWall(x, y + 1) ? 'true' : 'false'"
-              :data-left-wall="hasVerticalWall(x, y) ? 'true' : 'false'"
-              :data-right-wall="hasVerticalWall(x + 1, y) ? 'true' : 'false'"
-              @click="onCellAction(x, y)"
-              @contextmenu="onCellContextMenu($event, x, y)"
-            >
-              <span class="coords">{{ cellLabel(x, y) }}</span>
-              <span v-if="isRobotCell(x, y)" class="robot-icon">🤖</span>
-              <span
-                v-if="isEditMode && x < visibleWorld.data.width - 1"
-                :data-testid="`vwall-toggle-${x + 1}-${y}`"
-                class="wall-toggle wall-v"
-                :class="{ active: hasVerticalWall(x + 1, y) }"
-                @click.stop="toggleVerticalWall(x + 1, y)"
-                @contextmenu.prevent.stop
-              />
-              <span
-                v-if="isEditMode && y < visibleWorld.data.height - 1"
-                :data-testid="`hwall-toggle-${x}-${y + 1}`"
-                class="wall-toggle wall-h"
-                :class="{ active: hasHorizontalWall(x, y + 1) }"
-                @click.stop="toggleHorizontalWall(x, y + 1)"
-                @contextmenu.prevent.stop
-              />
-              <span
-                v-if="isEditMode && x < visibleWorld.data.width - 1 && y < visibleWorld.data.height - 1"
-                :data-testid="`corner-dead-zone-${x}-${y}`"
-                class="corner-dead-zone"
-                @click.stop
-                @contextmenu.prevent.stop
-              />
-            </button>
-          </template>
+        <div class="grid-scroll" data-testid="world-grid-scroll">
+          <div class="grid" data-testid="world-grid" :style="worldGridStyle">
+            <template v-for="(row, y) in visibleWorld.data.paint" :key="`row-${y}`">
+              <button
+                v-for="(cell, x) in row"
+                :key="`${x}-${y}`"
+                class="cell"
+                :class="{ painted: cell, robot: isRobotCell(x, y), editing: isEditMode }"
+                :style="cellStyle(x, y)"
+                :data-testid="`cell-${x}-${y}`"
+                :data-cell="`${x},${y}`"
+                :data-painted="cell ? 'true' : 'false'"
+                :data-robot="isRobotCell(x, y) ? 'true' : 'false'"
+                :data-top-wall="hasHorizontalWall(x, y) ? 'true' : 'false'"
+                :data-bottom-wall="hasHorizontalWall(x, y + 1) ? 'true' : 'false'"
+                :data-left-wall="hasVerticalWall(x, y) ? 'true' : 'false'"
+                :data-right-wall="hasVerticalWall(x + 1, y) ? 'true' : 'false'"
+                @click="onCellAction(x, y)"
+                @contextmenu="onCellContextMenu($event, x, y)"
+              >
+                <span class="coords">{{ cellLabel(x, y) }}</span>
+                <span v-if="isRobotCell(x, y)" class="robot-icon">🤖</span>
+                <span
+                  v-if="isEditMode && x < visibleWorld.data.width - 1"
+                  :data-testid="`vwall-toggle-${x + 1}-${y}`"
+                  class="wall-toggle wall-v"
+                  :class="{ active: hasVerticalWall(x + 1, y) }"
+                  @click.stop="toggleVerticalWall(x + 1, y)"
+                  @contextmenu.prevent.stop
+                />
+                <span
+                  v-if="isEditMode && y < visibleWorld.data.height - 1"
+                  :data-testid="`hwall-toggle-${x}-${y + 1}`"
+                  class="wall-toggle wall-h"
+                  :class="{ active: hasHorizontalWall(x, y + 1) }"
+                  @click.stop="toggleHorizontalWall(x, y + 1)"
+                  @contextmenu.prevent.stop
+                />
+                <span
+                  v-if="isEditMode && x < visibleWorld.data.width - 1 && y < visibleWorld.data.height - 1"
+                  :data-testid="`corner-dead-zone-${x}-${y}`"
+                  class="corner-dead-zone"
+                  @click.stop
+                  @contextmenu.prevent.stop
+                />
+              </button>
+            </template>
+          </div>
         </div>
       </section>
     </main>
@@ -500,12 +563,68 @@ textarea {
   overflow-wrap: normal;
   tab-size: 2;
 }
-.grid { display: grid; gap: 0; --wall-hit-area: 12px; --corner-dead-zone: 12px; }
-.cell { width: 100%; aspect-ratio: 1 / 1; border-radius: 0; border-style: solid; background: #13203f; color: #9bb8ef; position: relative; overflow: visible; padding: 8px; text-align: left; }
-.coords { position: absolute; left: 8px; top: 8px; font-size: 12px; opacity: 0.75; pointer-events: none; }
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+.world-zoom-controls { margin-bottom: 12px; }
+.zoom-label { font-weight: 600; }
+.zoom-range { display: inline-flex; align-items: center; flex: 1 1 220px; max-width: 280px; }
+.zoom-range input { width: 100%; }
+.zoom-value { min-width: 52px; font-variant-numeric: tabular-nums; color: #9bb8ef; }
+.grid-scroll {
+  overflow: auto;
+  padding: 4px;
+  border-radius: 16px;
+  background: rgba(9, 16, 31, 0.45);
+}
+.grid {
+  display: grid;
+  gap: 0;
+  width: max-content;
+  min-width: 100%;
+  justify-content: start;
+  --wall-hit-area: 12px;
+  --corner-dead-zone: 12px;
+}
+.cell {
+  width: var(--cell-size);
+  aspect-ratio: 1 / 1;
+  border-radius: 0;
+  border-style: solid;
+  background: #13203f;
+  color: #9bb8ef;
+  position: relative;
+  overflow: visible;
+  padding: clamp(6px, calc(var(--cell-size) * 0.11), 10px);
+  text-align: left;
+}
+.coords {
+  position: absolute;
+  left: clamp(6px, calc(var(--cell-size) * 0.11), 10px);
+  top: clamp(6px, calc(var(--cell-size) * 0.11), 10px);
+  font-size: clamp(11px, calc(var(--cell-size) * 0.16), 15px);
+  opacity: 0.75;
+  pointer-events: none;
+}
 .cell.painted { background: linear-gradient(135deg, #f472b6, #8b5cf6); color: white; }
 .cell.robot { box-shadow: inset 0 0 0 2px #f8fafc; }
-.robot-icon { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); font-size: 28px; user-select: none; pointer-events: none; }
+.robot-icon {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  font-size: clamp(24px, calc(var(--cell-size) * 0.38), 40px);
+  user-select: none;
+  pointer-events: none;
+}
 .wall-toggle { position: absolute; background: transparent; transition: background .15s ease, box-shadow .15s ease; z-index: 3; }
 .wall-toggle:hover { background: rgba(125, 211, 252, 0.18); }
 .wall-toggle.active,

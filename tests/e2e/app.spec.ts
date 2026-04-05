@@ -148,3 +148,21 @@ test('save keeps resized world, walls, paint, and robot position', async ({ page
   await expect(originCell).toHaveAttribute('data-right-wall', 'true')
   await expect(originCell).toHaveAttribute('data-bottom-wall', 'true')
 })
+
+test('field zoom changes visible cell size', async ({ page }) => {
+  await page.goto('/')
+
+  const cell = page.getByTestId('cell-0-0')
+  const initialWidth = await cell.evaluate((element) => element.getBoundingClientRect().width)
+
+  await page.getByRole('button', { name: 'Увеличить масштаб поля' }).click()
+  await page.getByRole('button', { name: 'Увеличить масштаб поля' }).click()
+
+  await expect(page.getByTestId('world-zoom-value')).toHaveText('120%')
+
+  const zoomedWidth = await cell.evaluate((element) => element.getBoundingClientRect().width)
+  expect(zoomedWidth).toBeGreaterThan(initialWidth)
+
+  await page.getByRole('button', { name: '100%' }).click()
+  await expect(page.getByTestId('world-zoom-value')).toHaveText('100%')
+})

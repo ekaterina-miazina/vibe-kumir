@@ -20,6 +20,38 @@ describe('parser', () => {
     expect(result.program?.statements[0].line).toBe(4)
   })
 
+  it('parses keywords and commands regardless of case', () => {
+    const source = `использовать Робот
+АлГ test
+НаЧ
+  Нц 2 РаЗ
+    ЕсЛи КЛЕТКА ЧИсТаЯ тО
+      ЗаКрАсИтЬ
+    ИНАЧЕ
+      ВпРаВо
+    ВсЕ
+  Кц
+КоН`
+    const result = parseProgram(source)
+
+    expect(result.errors).toEqual([])
+    expect(result.program?.statements).toEqual([{
+      kind: 'repeat',
+      count: 2,
+      line: 4,
+      body: [{
+        kind: 'if',
+        line: 5,
+        condition: {
+          kind: 'predicate',
+          predicate: 'cellClear',
+        },
+        thenBranch: [{ kind: 'paint', line: 6 }],
+        elseBranch: [{ kind: 'move', direction: 'right', line: 8 }],
+      }],
+    }])
+  })
+
   it('reports source line for unknown command even with blank lines', () => {
     const invalidLine = '  прыжок'
     const result = parseProgram(`использовать Робот
@@ -105,6 +137,30 @@ describe('runtime', () => {
     const events = runProgram(program, world)
     expect(events[events.length - 1]).toEqual({ type: 'runtimeError', message: 'collision with obstacle', line: 4 })
     expect(world.data.robot).toEqual({ x: 0, y: 0 })
+  })
+
+  it('runs predicates and loops regardless of case', () => {
+    const world = RobotWorld.create(2, 1)
+    const program = parseProgram(`использовать Робот
+аЛг test
+НАЧ
+  еСлИ Не КлЕтКа ЗаКрАшЕнА тО
+    зАкРаСиТь
+  вСе
+  НЦ ПоКа СПРаВа СВоБоДнО
+    ВПРАВО
+  КЦ
+кОн`).program!
+
+    const events = runProgram(program, world)
+
+    expect(events).toEqual([
+      { type: 'painted', position: { x: 0, y: 0 } },
+      { type: 'moved', position: { x: 1, y: 0 } },
+      { type: 'done' },
+    ])
+    expect(world.data.robot).toEqual({ x: 1, y: 0 })
+    expect(world.data.paint[0][0]).toBe(true)
   })
 
   it('paints a clear cell through predicate', () => {

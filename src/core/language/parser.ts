@@ -16,6 +16,7 @@ const predicateMap: Record<string, RobotPredicate> = {
 interface SourceLine {
   rawText: string
   text: string
+  normalizedText: string
   line: number
   contentStart: number
 }
@@ -46,8 +47,8 @@ export function parseProgram(source: string): ParseResult {
     .split('\n')
     .map((rawText, index) => createSourceLine(rawText, index + 1))
 
-  const start = lines.findIndex((line) => line.text.startsWith('алг '))
-  const begin = lines.findIndex((line) => line.text === 'нач')
+  const start = lines.findIndex((line) => line.normalizedText.startsWith('алг '))
+  const begin = lines.findIndex((line) => line.normalizedText === 'нач')
   const end = findLastLineIndex(lines, 'кон')
 
   if (start === -1 || begin === -1 || end === -1 || end <= begin) {
@@ -76,22 +77,22 @@ function parseBlock(lines: SourceLine[], index: number, stopWords: Set<string>):
       index += 1
       continue
     }
-    if (stopWords.has(sourceLine.text)) break
+    if (stopWords.has(sourceLine.normalizedText)) break
 
-    if (sourceLine.text === 'закрасить') {
+    if (sourceLine.normalizedText === 'закрасить') {
       statements.push({ kind: 'paint', line: sourceLine.line })
       index += 1
       continue
     }
 
-    const direction = parseDirection(sourceLine.text)
+    const direction = parseDirection(sourceLine.normalizedText)
     if (direction) {
       statements.push({ kind: 'move', direction, line: sourceLine.line })
       index += 1
       continue
     }
 
-    if (sourceLine.text.startsWith('если ') && sourceLine.text.endsWith(' то')) {
+    if (sourceLine.normalizedText.startsWith('если ') && sourceLine.normalizedText.endsWith(' то')) {
       const conditionText = sourceLine.text.slice(5, -3).trim()
       const condition = parseExpression(conditionText)
       if ('errorRange' in condition) {
@@ -107,13 +108,13 @@ function parseBlock(lines: SourceLine[], index: number, stopWords: Set<string>):
       if (thenErrors.length > 0) return [statements, thenIndex, thenErrors]
       let elseBranch: Statement[] = []
       let cursor = thenIndex
-      if (lines[cursor]?.text === 'иначе') {
+      if (lines[cursor]?.normalizedText === 'иначе') {
         const [parsedElse, elseIndex, elseErrors] = parseBlock(lines, cursor + 1, new Set(['все']))
         if (elseErrors.length > 0) return [statements, elseIndex, elseErrors]
         elseBranch = parsedElse
         cursor = elseIndex
       }
-      if (lines[cursor]?.text !== 'все') {
+      if (lines[cursor]?.normalizedText !== 'все') {
         return [statements, cursor, [createDiagnostic('Ожидалось слово "все".', sourceLine)]]
       }
       statements.push({ kind: 'if', condition: condition.expression, thenBranch, elseBranch, line: sourceLine.line })
@@ -121,11 +122,11 @@ function parseBlock(lines: SourceLine[], index: number, stopWords: Set<string>):
       continue
     }
 
-    const repeatMatch = sourceLine.text.match(/^нц\s+(\d+)\s+раз$/)
+    const repeatMatch = sourceLine.normalizedText.match(/^нц\s+(\d+)\s+раз$/)
     if (repeatMatch) {
       const [body, next, bodyErrors] = parseBlock(lines, index + 1, new Set(['кц']))
       if (bodyErrors.length > 0) return [statements, next, bodyErrors]
-      if (lines[next]?.text !== 'кц') {
+      if (lines[next]?.normalizedText !== 'кц') {
         return [statements, next, [createDiagnostic('Ожидалось слово "кц".', sourceLine)]]
       }
       statements.push({ kind: 'repeat', count: Number(repeatMatch[1]), body, line: sourceLine.line })
@@ -133,13 +134,14 @@ function parseBlock(lines: SourceLine[], index: number, stopWords: Set<string>):
       continue
     }
 
-    const whileMatch = sourceLine.text.match(/^нц\s+пока\s+(.+)$/)
+    const whileMatch = sourceLine.normalizedText.match(/^нц\s+пока\s+(.+)$/)
     if (whileMatch) {
-      const condition = parseExpression(whileMatch[1])
+      const conditionText = sourceLine.text.slice('нц пока '.length).trim()
+      const condition = parseExpression(conditionText)
       if ('errorRange' in condition) {
-        const conditionStart = sourceLine.text.indexOf(whileMatch[1], sourceLine.text.indexOf('пока') + 'пока'.length)
+        const conditionStart = sourceLine.text.indexOf(conditionText, 'нц '.length)
         return [statements, index, [createDiagnostic(
-          `Неизвестное условие: ${whileMatch[1]}`,
+          `Неизвестное условие: ${conditionText}`,
           sourceLine,
           conditionStart + condition.errorRange.startOffset,
           conditionStart + condition.errorRange.endOffset,
@@ -147,7 +149,7 @@ function parseBlock(lines: SourceLine[], index: number, stopWords: Set<string>):
       }
       const [body, next, bodyErrors] = parseBlock(lines, index + 1, new Set(['кц']))
       if (bodyErrors.length > 0) return [statements, next, bodyErrors]
-      if (lines[next]?.text !== 'кц') {
+      if (lines[next]?.normalizedText !== 'кц') {
         return [statements, next, [createDiagnostic('Ожидалось слово "кц".', sourceLine)]]
       }
       statements.push({ kind: 'while', condition: condition.expression, body, line: sourceLine.line })
@@ -163,16 +165,18 @@ function parseBlock(lines: SourceLine[], index: number, stopWords: Set<string>):
 
 function findLastLineIndex(lines: SourceLine[], value: string) {
   for (let index = lines.length - 1; index >= 0; index -= 1) {
-    if (lines[index].text === value) return index
+    if (lines[index].normalizedText === value) return index
   }
   return -1
 }
 
 function createSourceLine(rawText: string, line: number): SourceLine {
+  const text = rawText.trim()
   const firstNonWhitespace = rawText.search(/\S/)
   return {
     rawText,
-    text: rawText.trim(),
+    text,
+    normalizedText: normalizeKeywordText(text),
     line,
     contentStart: firstNonWhitespace === -1 ? rawText.length : firstNonWhitespace,
   }
@@ -207,7 +211,7 @@ function parseDirection(line: string) {
 }
 
 function parseExpression(text: string): ExpressionParseResult {
-  const normalized = text.trim()
+  const normalized = normalizeKeywordText(text.trim())
   if (normalized.startsWith('не ')) {
     const value = parseExpression(normalized.slice(3))
     if ('errorRange' in value) {
@@ -247,4 +251,8 @@ function shiftRange(range: SourceRange, offset: number): SourceRange {
     startOffset: range.startOffset + offset,
     endOffset: range.endOffset + offset,
   }
+}
+
+function normalizeKeywordText(text: string) {
+  return text.toLocaleLowerCase('ru-RU')
 }
