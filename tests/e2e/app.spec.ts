@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test'
 
-test('app runs example without console errors', async ({ page }) => {
+test('app runs starter program without console errors', async ({ page }) => {
   const consoleErrors: string[] = []
   const pageErrors: string[] = []
 
@@ -11,8 +11,10 @@ test('app runs example without console errors', async ({ page }) => {
 
   await page.goto('/')
   await expect(page.getByRole('heading', { name: 'ВайбКумир' })).toBeVisible()
+  await expect(page.getByTestId('success-dancer')).toHaveCount(0)
   await page.getByRole('button', { name: 'Запустить' }).click()
   await expect(page.getByTestId('runtime-log')).toContainText('done')
+  await expect(page.getByTestId('success-dancer')).toBeVisible()
   expect(consoleErrors).toEqual([])
   expect(pageErrors).toEqual([])
 })
@@ -103,9 +105,9 @@ test('theme switching keeps the main workflow usable', async ({ page }) => {
 test('editor shows line numbers and parse errors include the source line', async ({ page }) => {
   await page.goto('/')
 
-  await expect(page.getByTestId('editor-line-number')).toHaveCount(10)
+  await expect(page.getByTestId('editor-line-number')).toHaveCount(4)
   await expect(page.getByTestId('editor-line-number').first()).toHaveText('1')
-  await expect(page.getByTestId('editor-line-number').last()).toHaveText('10')
+  await expect(page.getByTestId('editor-line-number').last()).toHaveText('4')
 
   await page.getByTestId('code-editor').fill(`использовать Робот
 алг test
@@ -196,7 +198,7 @@ test('runtime errors include the source line', async ({ page }) => {
   await page.getByTestId('code-editor').fill(`использовать Робот
 алг test
 нач
-  нц 2 раз
+  нц 20 раз
     влево
   кц
 кон`)
@@ -204,6 +206,29 @@ test('runtime errors include the source line', async ({ page }) => {
   await page.getByRole('button', { name: 'Запустить' }).click()
 
   await expect(page.getByText('Строка 5: collision with obstacle')).toBeVisible()
+})
+
+test('success dancer stays after a failed rerun and disappears on reset', async ({ page }) => {
+  await page.goto('/')
+
+  await expect(page.getByTestId('success-dancer')).toHaveCount(0)
+  await page.getByRole('button', { name: 'Запустить' }).click()
+  await expect(page.getByTestId('success-dancer')).toBeVisible()
+
+  await page.getByTestId('code-editor').fill(`использовать Робот
+алг test
+нач
+  нц 20 раз
+    влево
+  кц
+кон`)
+
+  await page.getByRole('button', { name: 'Запустить' }).click()
+  await expect(page.getByText('Строка 5: collision with obstacle')).toBeVisible()
+  await expect(page.getByTestId('success-dancer')).toBeVisible()
+
+  await page.getByRole('button', { name: 'Сбросить' }).click()
+  await expect(page.getByTestId('success-dancer')).toHaveCount(0)
 })
 
 test('edit mode supports direct field gestures and cancel rolls them back', async ({ page }) => {

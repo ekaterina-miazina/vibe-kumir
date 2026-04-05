@@ -18,25 +18,10 @@ const emit = defineEmits<{
 }>()
 const docsHref = `${import.meta.env.BASE_URL}#docs`
 
-const examples = {
-  line: `использовать Робот
-алг линия
+const initialCode = `использовать Робот
+алг старт
 нач
-  нц 5 раз
-    закрасить
-    если справа свободно то
-      вправо
-    все
-  кц
-кон`,
-  wall: `использовать Робот
-алг до_стены
-нач
-  нц пока справа свободно
-    вправо
-  кц
-кон`,
-}
+кон`
 
 const latestNews = [
   {
@@ -56,11 +41,12 @@ const latestNews = [
   },
 ] as const
 
-const code = ref(examples.line)
+const code = ref(initialCode)
 const world = ref(RobotWorld.create(6, 4))
 const draftWorld = ref<RobotWorld | null>(null)
 const logs = ref<string[]>(['ВайбКумир готов — создано с vibe-coding ✨'])
 const runtimeErrors = ref<ParseDiagnostic[]>([])
+const showCelebration = ref(false)
 const editorRef = ref<HTMLTextAreaElement | null>(null)
 const editorScrollTop = ref(0)
 const editorScrollLeft = ref(0)
@@ -119,10 +105,6 @@ const themePreferenceModel = computed({
   set: (value: ThemePreference) => emit('update:themePreference', value),
 })
 
-function loadExample(key: keyof typeof examples) {
-  code.value = examples[key]
-}
-
 function run() {
   runtimeErrors.value = []
   const parsed = parsedProgram.value
@@ -136,6 +118,10 @@ function run() {
   runtimeErrors.value = events
     .filter((event) => event.type === 'runtimeError')
     .map((event) => ({ message: event.message, line: event.line }))
+
+  if (events.some((event) => event.type === 'done') && runtimeErrors.value.length === 0) {
+    showCelebration.value = true
+  }
 }
 
 function reset() {
@@ -148,6 +134,7 @@ function reset() {
   resizeHeight.value = world.value.data.height
   logs.value = ['Мир сброшен.']
   runtimeErrors.value = []
+  showCelebration.value = false
 }
 
 function enterEditMode() {
@@ -455,14 +442,6 @@ function getFieldRobotRingColor(value: string) {
       </div>
       <div class="toolbar">
         <select
-          :disabled="isEditMode"
-          aria-label="Пример программы"
-          @change="loadExample(($event.target as HTMLSelectElement).value as keyof typeof examples)"
-        >
-          <option value="line">Пример: линия</option>
-          <option value="wall">Пример: до стены</option>
-        </select>
-        <select
           v-model="themePreferenceModel"
           class="theme-select"
           aria-label="Тема оформления"
@@ -640,6 +619,26 @@ function getFieldRobotRingColor(value: string) {
 
     <section class="panel console-panel">
       <h2>Консоль</h2>
+      <div
+        v-if="showCelebration"
+        class="success-dancer-wrap"
+        data-testid="success-dancer"
+        role="img"
+        aria-label="Хорошая программа выполнена успешно"
+      >
+        <div class="success-dancer" aria-hidden="true">
+          <div class="dancer-head">
+            <span class="dancer-eye dancer-eye-left" />
+            <span class="dancer-eye dancer-eye-right" />
+            <span class="dancer-smile" />
+          </div>
+          <div class="dancer-torso" />
+          <div class="dancer-arm dancer-arm-left" />
+          <div class="dancer-arm dancer-arm-right" />
+          <div class="dancer-leg dancer-leg-left" />
+          <div class="dancer-leg dancer-leg-right" />
+        </div>
+      </div>
       <pre data-testid="runtime-log">{{ logs.join('\n') }}</pre>
       <ul v-if="formattedRuntimeErrors.length" class="errors runtime-errors">
         <li v-for="error in formattedRuntimeErrors" :key="error">{{ error }}</li>
@@ -989,12 +988,149 @@ textarea {
 }
 .errors { color: var(--error-text); }
 .errors li + li { margin-top: 4px; }
+.success-dancer-wrap {
+  display: grid;
+  justify-items: center;
+  margin-bottom: 16px;
+}
+.success-dancer {
+  --dancer-stroke: color-mix(in srgb, var(--text-primary) 88%, var(--accent-color));
+  position: relative;
+  width: 138px;
+  height: 190px;
+  transform-origin: center 62%;
+  animation: dancer-sway 1.7s ease-in-out infinite;
+}
+.dancer-head,
+.dancer-torso,
+.dancer-arm,
+.dancer-leg,
+.dancer-eye,
+.dancer-smile {
+  position: absolute;
+}
+.dancer-head {
+  left: 50%;
+  top: 10px;
+  width: 44px;
+  height: 44px;
+  transform: translateX(-50%);
+  border: 3px solid var(--dancer-stroke);
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--panel-background) 84%, white);
+}
+.dancer-eye {
+  top: 15px;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--dancer-stroke);
+}
+.dancer-eye-left { left: 12px; }
+.dancer-eye-right { right: 12px; }
+.dancer-smile {
+  left: 50%;
+  bottom: 9px;
+  width: 16px;
+  height: 8px;
+  transform: translateX(-50%);
+  border-bottom: 3px solid var(--dancer-stroke);
+  border-radius: 0 0 14px 14px;
+}
+.dancer-torso {
+  left: 50%;
+  top: 50px;
+  width: 0;
+  height: 82px;
+  border-left: 4px solid var(--dancer-stroke);
+  transform: translateX(-50%);
+}
+.dancer-arm,
+.dancer-leg {
+  width: 44px;
+  height: 0;
+  border-top: 4px solid var(--dancer-stroke);
+}
+.dancer-arm {
+  top: 78px;
+}
+.dancer-arm-left {
+  left: 26px;
+  transform-origin: right center;
+  transform: rotate(32deg);
+  animation: dancer-arm-left 1s ease-in-out infinite alternate;
+}
+.dancer-arm-right {
+  right: 26px;
+  transform-origin: left center;
+  transform: rotate(-38deg);
+  animation: dancer-arm-right 0.92s ease-in-out infinite alternate;
+}
+.dancer-leg {
+  top: 136px;
+}
+.dancer-leg-left {
+  left: 28px;
+  transform-origin: right center;
+  transform: rotate(60deg);
+  animation: dancer-leg-left 0.86s ease-in-out infinite alternate;
+}
+.dancer-leg-right {
+  right: 28px;
+  transform-origin: left center;
+  transform: rotate(-68deg);
+  animation: dancer-leg-right 0.78s ease-in-out infinite alternate;
+}
 .console-panel pre {
   white-space: pre-wrap;
   margin: 0;
   background: var(--console-background);
   border-radius: 12px;
   padding: 16px;
+}
+@keyframes dancer-sway {
+  0%,
+  100% {
+    transform: translateY(0) rotate(-5deg);
+  }
+  35% {
+    transform: translateY(-4px) rotate(4deg);
+  }
+  68% {
+    transform: translateY(-1px) rotate(7deg);
+  }
+}
+@keyframes dancer-arm-left {
+  0% {
+    transform: rotate(18deg);
+  }
+  100% {
+    transform: rotate(58deg);
+  }
+}
+@keyframes dancer-arm-right {
+  0% {
+    transform: rotate(-58deg);
+  }
+  100% {
+    transform: rotate(-14deg);
+  }
+}
+@keyframes dancer-leg-left {
+  0% {
+    transform: rotate(42deg);
+  }
+  100% {
+    transform: rotate(82deg);
+  }
+}
+@keyframes dancer-leg-right {
+  0% {
+    transform: rotate(-84deg);
+  }
+  100% {
+    transform: rotate(-36deg);
+  }
 }
 @media (max-width: 900px) {
   .app-shell {
@@ -1065,6 +1201,10 @@ textarea {
   .field-background-controls input {
     flex: 0 0 auto;
   }
+
+  .success-dancer {
+    transform: scale(0.94);
+  }
 }
 
 @media (max-width: 640px) {
@@ -1112,6 +1252,17 @@ textarea {
 
   .grid-scroll {
     padding: 2px;
+  }
+
+  .success-dancer-wrap {
+    margin-bottom: 12px;
+  }
+
+  .success-dancer {
+    width: 124px;
+    height: 176px;
+    transform: scale(0.9);
+    transform-origin: center top;
   }
 }
 </style>
