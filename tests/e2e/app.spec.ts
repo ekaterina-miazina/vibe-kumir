@@ -17,6 +17,37 @@ test('app runs example without console errors', async ({ page }) => {
   expect(pageErrors).toEqual([])
 })
 
+test('editor shows line numbers and parse errors include the source line', async ({ page }) => {
+  await page.goto('/')
+
+  await expect(page.getByTestId('editor-line-number')).toHaveCount(10)
+  await expect(page.getByTestId('editor-line-number').first()).toHaveText('1')
+  await expect(page.getByTestId('editor-line-number').last()).toHaveText('10')
+
+  await page.getByTestId('code-editor').fill(`использовать Робот
+алг test
+нач
+  прыжок
+кон`)
+
+  await expect(page.getByText('Строка 4: Неизвестная команда: прыжок')).toBeVisible()
+})
+
+test('runtime errors include the source line', async ({ page }) => {
+  await page.goto('/')
+  await page.getByTestId('code-editor').fill(`использовать Робот
+алг test
+нач
+  нц 2 раз
+    влево
+  кц
+кон`)
+
+  await page.getByRole('button', { name: 'Запустить' }).click()
+
+  await expect(page.getByText('Строка 5: collision with obstacle')).toBeVisible()
+})
+
 test('edit mode supports direct field gestures and cancel rolls them back', async ({ page }) => {
   await page.goto('/')
   await page.getByRole('button', { name: 'Редактировать обстановку' }).click()

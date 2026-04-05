@@ -10,11 +10,11 @@ export type Expression =
   | { kind: 'binary'; op: 'and' | 'or'; left: Expression; right: Expression }
 
 export type Statement =
-  | { kind: 'move'; direction: Direction }
-  | { kind: 'paint' }
-  | { kind: 'if'; condition: Expression; thenBranch: Statement[]; elseBranch: Statement[] }
-  | { kind: 'repeat'; count: number; body: Statement[] }
-  | { kind: 'while'; condition: Expression; body: Statement[] }
+  | { kind: 'move'; direction: Direction; line: number }
+  | { kind: 'paint'; line: number }
+  | { kind: 'if'; condition: Expression; thenBranch: Statement[]; elseBranch: Statement[]; line: number }
+  | { kind: 'repeat'; count: number; body: Statement[]; line: number }
+  | { kind: 'while'; condition: Expression; body: Statement[]; line: number }
 
 export interface Program {
   algorithmName: string

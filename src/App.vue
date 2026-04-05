@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
-import { parseProgram } from './core/language/parser'
+import { parseProgram, type ParseDiagnostic } from './core/language/parser'
 import { runProgram } from './core/runtime/interpreter'
 import { RobotWorld } from './core/robot/world'
 
@@ -28,13 +28,19 @@ const code = ref(examples.line)
 const world = ref(RobotWorld.create(6, 4))
 const draftWorld = ref<RobotWorld | null>(null)
 const logs = ref<string[]>(['ВайбКумир готов — создано с vibe-coding ✨'])
-const errors = ref<string[]>([])
+const runtimeErrors = ref<ParseDiagnostic[]>([])
+const editorRef = ref<HTMLTextAreaElement | null>(null)
+const lineNumbersRef = ref<HTMLDivElement | null>(null)
 
 const isEditMode = ref(false)
 const resizeWidth = ref(world.value.data.width)
 const resizeHeight = ref(world.value.data.height)
 
-const parseErrors = computed(() => parseProgram(code.value).errors)
+const parsedProgram = computed(() => parseProgram(code.value))
+const lineNumbers = computed(() => Array.from({ length: code.value.split('\n').length }, (_, index) => index + 1))
+const parseErrors = computed(() => parsedProgram.value.errors)
+const formattedParseErrors = computed(() => parseErrors.value.map(formatDiagnostic))
+const formattedRuntimeErrors = computed(() => runtimeErrors.value.map(formatDiagnostic))
 const visibleWorld = computed(() => (isEditMode.value && draftWorld.value ? draftWorld.value : world.value))
 
 function loadExample(key: keyof typeof examples) {
@@ -42,17 +48,18 @@ function loadExample(key: keyof typeof examples) {
 }
 
 function run() {
-  errors.value = []
-  const parsed = parseProgram(code.value)
+  runtimeErrors.value = []
+  const parsed = parsedProgram.value
   if (!parsed.program) {
-    errors.value = parsed.errors
     return
   }
   const runtimeWorld = world.value.clone()
   const events = runProgram(parsed.program, runtimeWorld)
   world.value = runtimeWorld
   logs.value = events.map((event) => JSON.stringify(event))
-  errors.value = events.filter((event) => event.type === 'runtimeError').map((event) => event.message)
+  runtimeErrors.value = events
+    .filter((event) => event.type === 'runtimeError')
+    .map((event) => ({ message: event.message, line: event.line }))
 }
 
 function reset() {
@@ -62,7 +69,7 @@ function reset() {
   resizeWidth.value = world.value.data.width
   resizeHeight.value = world.value.data.height
   logs.value = ['Мир сброшен.']
-  errors.value = []
+  runtimeErrors.value = []
 }
 
 function enterEditMode() {
@@ -160,6 +167,15 @@ function cellStyle(x: number, y: number) {
 function cellLabel(x: number, y: number) {
   return `${x},${y}`
 }
+
+function formatDiagnostic(diagnostic: ParseDiagnostic) {
+  return diagnostic.line ? `Строка ${diagnostic.line}: ${diagnostic.message}` : diagnostic.message
+}
+
+function syncEditorScroll() {
+  if (!editorRef.value || !lineNumbersRef.value) return
+  lineNumbersRef.value.scrollTop = editorRef.value.scrollTop
+}
 </script>
 
 <template>
@@ -183,9 +199,23 @@ function cellLabel(x: number, y: number) {
     <main>
       <section class="panel">
         <h2>Редактор кода</h2>
-        <textarea v-model="code" spellcheck="false" />
-        <ul v-if="parseErrors.length" class="errors">
-          <li v-for="error in parseErrors" :key="error">{{ error }}</li>
+        <div class="editor-shell">
+          <div ref="lineNumbersRef" class="line-numbers" data-testid="editor-line-numbers" aria-hidden="true">
+            <div v-for="lineNumber in lineNumbers" :key="lineNumber" class="line-number" data-testid="editor-line-number">
+              {{ lineNumber }}
+            </div>
+          </div>
+          <textarea
+            ref="editorRef"
+            v-model="code"
+            spellcheck="false"
+            wrap="off"
+            data-testid="code-editor"
+            @scroll="syncEditorScroll"
+          />
+        </div>
+        <ul v-if="formattedParseErrors.length" class="errors">
+          <li v-for="error in formattedParseErrors" :key="error">{{ error }}</li>
         </ul>
       </section>
 
@@ -262,8 +292,8 @@ function cellLabel(x: number, y: number) {
     <section class="panel console-panel">
       <h2>Консоль</h2>
       <pre>{{ logs.join('\n') }}</pre>
-      <ul v-if="errors.length" class="errors runtime-errors">
-        <li v-for="error in errors" :key="error">{{ error }}</li>
+      <ul v-if="formattedRuntimeErrors.length" class="errors runtime-errors">
+        <li v-for="error in formattedRuntimeErrors" :key="error">{{ error }}</li>
       </ul>
     </section>
   </div>
@@ -276,7 +306,46 @@ header { grid-template-columns: 1fr auto; align-items: center; }
 .toolbar { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
 main { grid-template-columns: minmax(320px, 1.1fr) minmax(320px, 1fr); }
 .panel { background: rgba(16, 23, 47, 0.92); border: 1px solid rgba(145, 190, 255, 0.18); border-radius: 20px; padding: 20px; box-shadow: 0 16px 40px rgba(0,0,0,.25); }
-textarea { width: 100%; min-height: 420px; background: #09101f; color: #dce9ff; border: 1px solid #22345f; border-radius: 14px; padding: 16px; resize: vertical; }
+.editor-shell {
+  --editor-line-height: 1.5;
+  --editor-padding: 16px;
+  --editor-font: 15px/var(--editor-line-height) 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: stretch;
+  background: #09101f;
+  border: 1px solid #22345f;
+  border-radius: 14px;
+  overflow: hidden;
+}
+.line-numbers,
+textarea {
+  min-height: 420px;
+  font: var(--editor-font);
+  line-height: var(--editor-line-height);
+}
+.line-numbers {
+  padding: var(--editor-padding) 12px var(--editor-padding) 16px;
+  background: rgba(19, 32, 63, 0.85);
+  color: #6f86b5;
+  text-align: right;
+  user-select: none;
+  overflow: hidden;
+  border-right: 1px solid rgba(34, 52, 95, 0.9);
+}
+.line-number { white-space: pre; }
+textarea {
+  width: 100%;
+  background: transparent;
+  color: #dce9ff;
+  border: 0;
+  padding: var(--editor-padding);
+  resize: vertical;
+  outline: none;
+  white-space: pre;
+  overflow-wrap: normal;
+  tab-size: 2;
+}
 .grid { display: grid; gap: 0; --wall-hit-area: 12px; --corner-dead-zone: 12px; }
 .cell { width: 100%; aspect-ratio: 1 / 1; border-radius: 0; border-style: solid; background: #13203f; color: #9bb8ef; position: relative; overflow: visible; padding: 8px; text-align: left; }
 .coords { position: absolute; left: 8px; top: 8px; font-size: 12px; opacity: 0.75; pointer-events: none; }
@@ -298,6 +367,7 @@ textarea { width: 100%; min-height: 420px; background: #09101f; color: #dce9ff; 
 .resize-controls label { display: inline-flex; align-items: center; gap: 6px; }
 .resize-controls input { width: 72px; background: #09101f; color: #dce9ff; border: 1px solid #22345f; border-radius: 8px; padding: 4px 8px; }
 .errors { color: #fca5a5; }
+.errors li + li { margin-top: 4px; }
 .console-panel pre { white-space: pre-wrap; margin: 0; background: #09101f; border-radius: 12px; padding: 16px; }
 @media (max-width: 900px) { main, header { grid-template-columns: 1fr; } }
 </style>

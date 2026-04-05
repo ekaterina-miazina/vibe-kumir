@@ -4,18 +4,23 @@ import { RobotWorld } from '../robot/world'
 export type RuntimeEvent =
   | { type: 'moved'; position: { x: number; y: number } }
   | { type: 'painted'; position: { x: number; y: number } }
-  | { type: 'runtimeError'; message: string }
+  | { type: 'runtimeError'; message: string; line?: number }
   | { type: 'done' }
 
-export class RuntimeError extends Error {}
+export class RuntimeError extends Error {
+  constructor(message: string, readonly line?: number) {
+    super(message)
+  }
+}
 
 export function runProgram(program: Program, world: RobotWorld, maxSteps = 1_000): RuntimeEvent[] {
   const events: RuntimeEvent[] = []
   let steps = 0
+  let currentLine: number | undefined
 
   const guard = () => {
     steps += 1
-    if (steps > maxSteps) throw new RuntimeError('step budget exceeded')
+    if (steps > maxSteps) throw new RuntimeError('step budget exceeded', currentLine)
   }
 
   const evalExpr = (expr: Expression): boolean => {
@@ -31,10 +36,11 @@ export function runProgram(program: Program, world: RobotWorld, maxSteps = 1_000
 
   const exec = (statements: Statement[]) => {
     for (const statement of statements) {
+      currentLine = statement.line
       guard()
       switch (statement.kind) {
         case 'move':
-          moveRobot(world, statement.direction)
+          moveRobot(world, statement.direction, statement.line)
           events.push({ type: 'moved', position: { ...world.data.robot } })
           break
         case 'paint':
@@ -58,25 +64,29 @@ export function runProgram(program: Program, world: RobotWorld, maxSteps = 1_000
     exec(program.statements)
     events.push({ type: 'done' })
   } catch (error) {
+    if (error instanceof RuntimeError) {
+      events.push({ type: 'runtimeError', message: error.message, line: error.line })
+      return events
+    }
     events.push({ type: 'runtimeError', message: error instanceof Error ? error.message : 'unknown runtime error' })
   }
 
   return events
 }
 
-function moveRobot(world: RobotWorld, direction: 'up' | 'down' | 'left' | 'right') {
+function moveRobot(world: RobotWorld, direction: 'up' | 'down' | 'left' | 'right', line: number) {
   const { x, y } = world.data.robot
   if (direction === 'up') {
-    if (world.isWallTop()) throw new RuntimeError('collision with obstacle')
+    if (world.isWallTop()) throw new RuntimeError('collision with obstacle', line)
     world.setRobot(x, y - 1)
   } else if (direction === 'down') {
-    if (world.isWallBottom()) throw new RuntimeError('collision with obstacle')
+    if (world.isWallBottom()) throw new RuntimeError('collision with obstacle', line)
     world.setRobot(x, y + 1)
   } else if (direction === 'left') {
-    if (world.isWallLeft()) throw new RuntimeError('collision with obstacle')
+    if (world.isWallLeft()) throw new RuntimeError('collision with obstacle', line)
     world.setRobot(x - 1, y)
   } else {
-    if (world.isWallRight()) throw new RuntimeError('collision with obstacle')
+    if (world.isWallRight()) throw new RuntimeError('collision with obstacle', line)
     world.setRobot(x + 1, y)
   }
 }
@@ -96,4 +106,3 @@ function evaluatePredicate(predicate: import('../language/ast').RobotPredicate, 
     default: return false
   }
 }
-
