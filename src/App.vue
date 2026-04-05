@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
+import { computed, ref } from 'vue'
 import { parseProgram } from './core/language/parser'
 import { runProgram } from './core/runtime/interpreter'
 import { RobotWorld } from './core/robot/world'
@@ -24,20 +24,18 @@ const examples = {
 кон`,
 }
 
-type EditorTool = 'paint' | 'robot' | 'vwall' | 'hwall'
-
 const code = ref(examples.line)
 const world = ref(RobotWorld.create(6, 4))
+const draftWorld = ref<RobotWorld | null>(null)
 const logs = ref<string[]>(['VibeKumir готов — создано с vibe-coding ✨'])
 const errors = ref<string[]>([])
 
 const isEditMode = ref(false)
-const activeTool = ref<EditorTool>('paint')
 const resizeWidth = ref(world.value.data.width)
 const resizeHeight = ref(world.value.data.height)
-const robotDragActive = ref(false)
 
 const parseErrors = computed(() => parseProgram(code.value).errors)
+const visibleWorld = computed(() => (isEditMode.value && draftWorld.value ? draftWorld.value : world.value))
 
 function loadExample(key: keyof typeof examples) {
   code.value = examples[key]
@@ -59,68 +57,105 @@ function run() {
 
 function reset() {
   world.value = RobotWorld.create(6, 4)
+  draftWorld.value = null
+  isEditMode.value = false
   resizeWidth.value = world.value.data.width
   resizeHeight.value = world.value.data.height
   logs.value = ['Мир сброшен.']
   errors.value = []
 }
 
-function toggleEditMode() {
-  isEditMode.value = !isEditMode.value
-  if (!isEditMode.value) {
-    robotDragActive.value = false
-  }
+function enterEditMode() {
+  draftWorld.value = world.value.clone()
+  resizeWidth.value = draftWorld.value.data.width
+  resizeHeight.value = draftWorld.value.data.height
+  isEditMode.value = true
 }
 
 function applyResize() {
-  world.value.resizeTo(Math.max(2, resizeWidth.value), Math.max(2, resizeHeight.value))
+  const targetWorld = isEditMode.value ? draftWorld.value : world.value
+  if (!targetWorld) return
+
+  targetWorld.resizeTo(Math.max(2, resizeWidth.value), Math.max(2, resizeHeight.value))
+  resizeWidth.value = targetWorld.data.width
+  resizeHeight.value = targetWorld.data.height
 }
 
 function onCellAction(x: number, y: number) {
-  if (!isEditMode.value) {
-    world.value.togglePaint(x, y)
-    return
-  }
-  if (activeTool.value === 'paint') {
-    world.value.togglePaint(x, y)
-  }
-  if (activeTool.value === 'robot') {
-    world.value.setRobot(x, y)
-  }
+  if (!isEditMode.value || !draftWorld.value) return
+  draftWorld.value.togglePaint(x, y)
 }
 
 function toggleVerticalWall(x: number, y: number) {
-  if (!isEditMode.value || activeTool.value !== 'vwall') return
-  world.value.toggleVerticalWall(x, y)
+  if (!isEditMode.value || !draftWorld.value) return
+  draftWorld.value.toggleVerticalWall(x, y)
 }
 
 function toggleHorizontalWall(x: number, y: number) {
-  if (!isEditMode.value || activeTool.value !== 'hwall') return
-  world.value.toggleHorizontalWall(x, y)
+  if (!isEditMode.value || !draftWorld.value) return
+  draftWorld.value.toggleHorizontalWall(x, y)
 }
 
-function startRobotDrag() {
-  if (!isEditMode.value || activeTool.value !== 'robot') return
-  robotDragActive.value = true
+function onCellContextMenu(event: MouseEvent, x: number, y: number) {
+  if (!isEditMode.value || !draftWorld.value) return
+  event.preventDefault()
+  event.stopPropagation()
+  draftWorld.value.setRobot(x, y)
 }
 
-function onCellEnter(x: number, y: number) {
-  if (robotDragActive.value) {
-    world.value.setRobot(x, y)
+function saveEdits() {
+  if (!draftWorld.value) return
+  world.value = draftWorld.value.clone()
+  draftWorld.value = null
+  isEditMode.value = false
+  resizeWidth.value = world.value.data.width
+  resizeHeight.value = world.value.data.height
+}
+
+function cancelEdits() {
+  draftWorld.value = null
+  isEditMode.value = false
+  resizeWidth.value = world.value.data.width
+  resizeHeight.value = world.value.data.height
+}
+
+function hasVerticalWall(x: number, y: number) {
+  return visibleWorld.value.data.vWalls[y][x]
+}
+
+function hasHorizontalWall(x: number, y: number) {
+  return visibleWorld.value.data.hWalls[y][x]
+}
+
+function isRobotCell(x: number, y: number) {
+  return visibleWorld.value.data.robot.x === x && visibleWorld.value.data.robot.y === y
+}
+
+function borderWidth(hasWall: boolean) {
+  return hasWall ? '4px' : '1px'
+}
+
+function borderColor(hasWall: boolean) {
+  return hasWall ? '#7dd3fc' : '#27406f'
+}
+
+function cellStyle(x: number, y: number) {
+  const topWall = hasHorizontalWall(x, y)
+  const bottomWall = hasHorizontalWall(x, y + 1)
+  const leftWall = hasVerticalWall(x, y)
+  const rightWall = hasVerticalWall(x + 1, y)
+
+  return {
+    borderTopWidth: borderWidth(topWall),
+    borderBottomWidth: borderWidth(bottomWall),
+    borderLeftWidth: borderWidth(leftWall),
+    borderRightWidth: borderWidth(rightWall),
+    borderTopColor: borderColor(topWall),
+    borderBottomColor: borderColor(bottomWall),
+    borderLeftColor: borderColor(leftWall),
+    borderRightColor: borderColor(rightWall),
   }
 }
-
-function stopRobotDrag() {
-  robotDragActive.value = false
-}
-
-onMounted(() => {
-  window.addEventListener('mouseup', stopRobotDrag)
-})
-
-onBeforeUnmount(() => {
-  window.removeEventListener('mouseup', stopRobotDrag)
-})
 
 function cellLabel(x: number, y: number) {
   return `${x},${y}`
@@ -135,13 +170,13 @@ function cellLabel(x: number, y: number) {
         <p>Клиентская среда Робота, созданная с vibe-coding.</p>
       </div>
       <div class="toolbar">
-        <select @change="loadExample(($event.target as HTMLSelectElement).value as keyof typeof examples)">
+        <select :disabled="isEditMode" @change="loadExample(($event.target as HTMLSelectElement).value as keyof typeof examples)">
           <option value="line">Пример: линия</option>
           <option value="wall">Пример: до стены</option>
         </select>
-        <button @click="run">Запустить</button>
-        <button @click="reset">Сбросить</button>
-        <button @click="toggleEditMode">{{ isEditMode ? 'Выйти из режима редактирования' : 'Редактировать обстановку' }}</button>
+        <button :disabled="isEditMode" @click="run">Запустить</button>
+        <button :disabled="isEditMode" @click="reset">Сбросить</button>
+        <button v-if="!isEditMode" @click="enterEditMode">Редактировать обстановку</button>
       </div>
     </header>
 
@@ -158,54 +193,68 @@ function cellLabel(x: number, y: number) {
         <h2>Поле Робота</h2>
 
         <div v-if="isEditMode" class="edit-tools">
-          <div class="tool-group">
-            <button :class="{ active: activeTool === 'paint' }" @click="activeTool = 'paint'">Закраска</button>
-            <button :class="{ active: activeTool === 'robot' }" @click="activeTool = 'robot'">Положение робота</button>
-            <button :class="{ active: activeTool === 'vwall' }" @click="activeTool = 'vwall'">Вертикальные стены</button>
-            <button :class="{ active: activeTool === 'hwall' }" @click="activeTool = 'hwall'">Горизонтальные стены</button>
+          <div class="edit-instructions">
+            <p>Левый клик по клетке: закрасить или снять закраску.</p>
+            <p>Левый клик по границе клеток: поставить или убрать стену.</p>
+            <p>Правый клик по клетке: установить начальное положение робота.</p>
           </div>
           <div class="tool-group resize-controls">
             <label>Ширина <input v-model.number="resizeWidth" type="number" min="2" /></label>
             <label>Высота <input v-model.number="resizeHeight" type="number" min="2" /></label>
             <button @click="applyResize">Применить размер</button>
           </div>
+          <div class="tool-group edit-actions">
+            <button @click="saveEdits">Сохранить</button>
+            <button class="secondary-action" @click="cancelEdits">Отмена</button>
+          </div>
         </div>
 
-        <div class="grid" :style="{ gridTemplateColumns: `repeat(${world.data.width}, 1fr)` }">
-          <button
-            v-for="(cell, index) in world.data.paint.flat()"
-            :key="index"
-            class="cell"
-            :class="{
-              painted: cell,
-              robot: world.data.robot.x === index % world.data.width && world.data.robot.y === Math.floor(index / world.data.width),
-              'tool-vwall': isEditMode && activeTool === 'vwall',
-              'tool-hwall': isEditMode && activeTool === 'hwall'
-            }"
-            :style="{
-              borderTopWidth: world.data.hWalls[Math.floor(index / world.data.width)][index % world.data.width] ? '3px' : '1px',
-              borderBottomWidth: world.data.hWalls[Math.floor(index / world.data.width) + 1][index % world.data.width] ? '3px' : '1px',
-              borderLeftWidth: world.data.vWalls[Math.floor(index / world.data.width)][index % world.data.width] ? '3px' : '1px',
-              borderRightWidth: world.data.vWalls[Math.floor(index / world.data.width)][(index % world.data.width) + 1] ? '3px' : '1px'
-            }"
-            @click="onCellAction(index % world.data.width, Math.floor(index / world.data.width))"
-            @mouseenter="onCellEnter(index % world.data.width, Math.floor(index / world.data.width))"
-          >
-            <span class="coords">{{ cellLabel(index % world.data.width, Math.floor(index / world.data.width)) }}</span>
-            <span
-              v-if="world.data.robot.x === index % world.data.width && world.data.robot.y === Math.floor(index / world.data.width)"
-              class="robot-icon"
-              @mousedown.stop="startRobotDrag"
-            >🤖</span>
-            <span
-              class="wall-toggle wall-v"
-              @click.stop="toggleVerticalWall((index % world.data.width) + 1, Math.floor(index / world.data.width))"
-            />
-            <span
-              class="wall-toggle wall-h"
-              @click.stop="toggleHorizontalWall(index % world.data.width, Math.floor(index / world.data.width) + 1)"
-            />
-          </button>
+        <div class="grid" :style="{ gridTemplateColumns: `repeat(${visibleWorld.data.width}, 1fr)` }">
+          <template v-for="(row, y) in visibleWorld.data.paint" :key="`row-${y}`">
+            <button
+              v-for="(cell, x) in row"
+              :key="`${x}-${y}`"
+              class="cell"
+              :class="{ painted: cell, robot: isRobotCell(x, y), editing: isEditMode }"
+              :style="cellStyle(x, y)"
+              :data-testid="`cell-${x}-${y}`"
+              :data-cell="`${x},${y}`"
+              :data-painted="cell ? 'true' : 'false'"
+              :data-robot="isRobotCell(x, y) ? 'true' : 'false'"
+              :data-top-wall="hasHorizontalWall(x, y) ? 'true' : 'false'"
+              :data-bottom-wall="hasHorizontalWall(x, y + 1) ? 'true' : 'false'"
+              :data-left-wall="hasVerticalWall(x, y) ? 'true' : 'false'"
+              :data-right-wall="hasVerticalWall(x + 1, y) ? 'true' : 'false'"
+              @click="onCellAction(x, y)"
+              @contextmenu="onCellContextMenu($event, x, y)"
+            >
+              <span class="coords">{{ cellLabel(x, y) }}</span>
+              <span v-if="isRobotCell(x, y)" class="robot-icon">🤖</span>
+              <span
+                v-if="isEditMode && x < visibleWorld.data.width - 1"
+                :data-testid="`vwall-toggle-${x + 1}-${y}`"
+                class="wall-toggle wall-v"
+                :class="{ active: hasVerticalWall(x + 1, y) }"
+                @click.stop="toggleVerticalWall(x + 1, y)"
+                @contextmenu.prevent.stop
+              />
+              <span
+                v-if="isEditMode && y < visibleWorld.data.height - 1"
+                :data-testid="`hwall-toggle-${x}-${y + 1}`"
+                class="wall-toggle wall-h"
+                :class="{ active: hasHorizontalWall(x, y + 1) }"
+                @click.stop="toggleHorizontalWall(x, y + 1)"
+                @contextmenu.prevent.stop
+              />
+              <span
+                v-if="isEditMode && x < visibleWorld.data.width - 1 && y < visibleWorld.data.height - 1"
+                :data-testid="`corner-dead-zone-${x}-${y}`"
+                class="corner-dead-zone"
+                @click.stop
+                @contextmenu.prevent.stop
+              />
+            </button>
+          </template>
         </div>
       </section>
     </main>
@@ -228,20 +277,24 @@ header { grid-template-columns: 1fr auto; align-items: center; }
 main { grid-template-columns: minmax(320px, 1.1fr) minmax(320px, 1fr); }
 .panel { background: rgba(16, 23, 47, 0.92); border: 1px solid rgba(145, 190, 255, 0.18); border-radius: 20px; padding: 20px; box-shadow: 0 16px 40px rgba(0,0,0,.25); }
 textarea { width: 100%; min-height: 420px; background: #09101f; color: #dce9ff; border: 1px solid #22345f; border-radius: 14px; padding: 16px; resize: vertical; }
-.grid { display: grid; gap: 6px; }
-.cell { min-height: 72px; border-radius: 14px; border-style: solid; border-color: #27406f; background: #13203f; color: #9bb8ef; position: relative; overflow: hidden; }
-.coords { font-size: 12px; opacity: 0.75; }
+.grid { display: grid; gap: 0; --wall-hit-area: 12px; --corner-dead-zone: 12px; }
+.cell { width: 100%; aspect-ratio: 1 / 1; border-radius: 0; border-style: solid; background: #13203f; color: #9bb8ef; position: relative; overflow: visible; padding: 8px; text-align: left; }
+.coords { position: absolute; left: 8px; top: 8px; font-size: 12px; opacity: 0.75; pointer-events: none; }
 .cell.painted { background: linear-gradient(135deg, #f472b6, #8b5cf6); color: white; }
 .cell.robot { box-shadow: inset 0 0 0 2px #f8fafc; }
-.robot-icon { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); font-size: 28px; cursor: grab; user-select: none; }
-.wall-toggle { position: absolute; background: rgba(248, 250, 252, 0.1); opacity: 0; transition: opacity .15s ease; }
-.cell.tool-vwall .wall-v,
-.cell.tool-hwall .wall-h { opacity: 1; }
-.wall-v { right: -1px; top: 0; width: 12px; height: 100%; cursor: col-resize; }
-.wall-h { left: 0; bottom: -1px; width: 100%; height: 12px; cursor: row-resize; }
+.robot-icon { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); font-size: 28px; user-select: none; pointer-events: none; }
+.wall-toggle { position: absolute; background: transparent; transition: background .15s ease, box-shadow .15s ease; z-index: 3; }
+.wall-toggle:hover { background: rgba(125, 211, 252, 0.18); }
+.wall-toggle.active,
+.wall-toggle.active:hover { background: transparent; }
+.wall-v { right: calc(var(--wall-hit-area) / -2); top: 0; width: var(--wall-hit-area); height: calc(100% - var(--corner-dead-zone)); cursor: col-resize; }
+.wall-h { left: 0; bottom: calc(var(--wall-hit-area) / -2); width: calc(100% - var(--corner-dead-zone)); height: var(--wall-hit-area); cursor: row-resize; }
+.corner-dead-zone { position: absolute; right: calc(var(--corner-dead-zone) / -2); bottom: calc(var(--corner-dead-zone) / -2); width: var(--corner-dead-zone); height: var(--corner-dead-zone); z-index: 4; }
 .edit-tools { display: grid; gap: 10px; margin-bottom: 12px; }
+.edit-instructions { background: rgba(9, 16, 31, 0.8); border: 1px solid rgba(125, 211, 252, 0.24); border-radius: 12px; padding: 12px; }
+.edit-instructions p { margin: 0; }
 .tool-group { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
-.tool-group button.active { border-color: #8b5cf6; box-shadow: 0 0 0 2px rgba(139, 92, 246, 0.25); }
+.secondary-action { background: transparent; color: inherit; border: 1px solid rgba(145, 190, 255, 0.3); }
 .resize-controls label { display: inline-flex; align-items: center; gap: 6px; }
 .resize-controls input { width: 72px; background: #09101f; color: #dce9ff; border: 1px solid #22345f; border-radius: 8px; padding: 4px 8px; }
 .errors { color: #fca5a5; }
