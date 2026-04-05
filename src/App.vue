@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, ref } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { applyEnterIndentation, applyTabIndentation } from './editor/indentation'
 import { parseProgram, type ParseDiagnostic } from './core/language/parser'
 import { runProgram } from './core/runtime/interpreter'
@@ -42,6 +42,13 @@ const maxWorldZoom = 160
 const defaultWorldZoom = 100
 const baseCellSize = 88
 const worldZoom = ref(defaultWorldZoom)
+const themeStorageKey = 'vibe-kumir-theme'
+
+type ThemePreference = 'system' | 'light' | 'dark'
+type ResolvedTheme = 'light' | 'dark'
+
+const themePreference = ref<ThemePreference>('system')
+const systemTheme = ref<ResolvedTheme>(getSystemTheme())
 
 const parsedProgram = computed(() => parseProgram(code.value))
 const lineNumbers = computed(() => Array.from({ length: code.value.split('\n').length }, (_, index) => index + 1))
@@ -50,6 +57,9 @@ const formattedParseErrors = computed(() => parseErrors.value.map(formatDiagnost
 const formattedRuntimeErrors = computed(() => runtimeErrors.value.map(formatDiagnostic))
 const visibleWorld = computed(() => (isEditMode.value && draftWorld.value ? draftWorld.value : world.value))
 const highlightedEditorLines = computed(() => buildEditorLines(code.value, parseErrors.value))
+const resolvedTheme = computed<ResolvedTheme>(() =>
+  themePreference.value === 'system' ? systemTheme.value : themePreference.value,
+)
 const lineNumbersStyle = computed(() => ({
   transform: `translateY(${-editorScrollTop.value}px)`,
 }))
@@ -63,6 +73,37 @@ const worldGridStyle = computed(() => ({
   '--corner-dead-zone': `${Math.max(12, Math.round((baseCellSize * worldZoom.value * 0.18) / 100))}px`,
 }))
 const worldZoomLabel = computed(() => `${worldZoom.value}%`)
+
+let colorSchemeQuery: MediaQueryList | null = null
+
+watch(themePreference, (value, previousValue) => {
+  if (typeof window === 'undefined' || value === previousValue) return
+  window.localStorage.setItem(themeStorageKey, value)
+})
+
+watch(
+  resolvedTheme,
+  (theme) => {
+    if (typeof document === 'undefined') return
+    document.documentElement.dataset.theme = theme
+  },
+  { immediate: true },
+)
+
+onMounted(() => {
+  const storedThemePreference = readThemePreference()
+  if (storedThemePreference) {
+    themePreference.value = storedThemePreference
+  }
+
+  colorSchemeQuery = window.matchMedia('(prefers-color-scheme: dark)')
+  systemTheme.value = colorSchemeQuery.matches ? 'dark' : 'light'
+  colorSchemeQuery.addEventListener('change', onSystemThemeChange)
+})
+
+onBeforeUnmount(() => {
+  colorSchemeQuery?.removeEventListener('change', onSystemThemeChange)
+})
 
 function loadExample(key: keyof typeof examples) {
   code.value = examples[key]
@@ -180,7 +221,7 @@ function borderWidth(hasWall: boolean) {
 }
 
 function borderColor(hasWall: boolean) {
-  return hasWall ? '#7dd3fc' : '#27406f'
+  return hasWall ? 'var(--wall-color-active)' : 'var(--wall-color-idle)'
 }
 
 function cellStyle(x: number, y: number) {
@@ -338,6 +379,25 @@ function applyEditorEdit(
     syncEditorScroll()
   })
 }
+
+function isThemePreference(value: string | null): value is ThemePreference {
+  return value === 'system' || value === 'light' || value === 'dark'
+}
+
+function readThemePreference() {
+  if (typeof window === 'undefined') return null
+  const storedValue = window.localStorage.getItem(themeStorageKey)
+  return isThemePreference(storedValue) ? storedValue : null
+}
+
+function getSystemTheme(): ResolvedTheme {
+  if (typeof window === 'undefined' || !window.matchMedia) return 'dark'
+  return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'
+}
+
+function onSystemThemeChange(event: MediaQueryListEvent) {
+  systemTheme.value = event.matches ? 'dark' : 'light'
+}
 </script>
 
 <template>
@@ -348,9 +408,18 @@ function applyEditorEdit(
         <p>Клиентская среда Робота, созданная с vibe-coding.</p>
       </div>
       <div class="toolbar">
-        <select :disabled="isEditMode" @change="loadExample(($event.target as HTMLSelectElement).value as keyof typeof examples)">
+        <select
+          :disabled="isEditMode"
+          aria-label="Пример программы"
+          @change="loadExample(($event.target as HTMLSelectElement).value as keyof typeof examples)"
+        >
           <option value="line">Пример: линия</option>
           <option value="wall">Пример: до стены</option>
+        </select>
+        <select v-model="themePreference" class="theme-select" aria-label="Тема оформления" data-testid="theme-select">
+          <option value="system">Система</option>
+          <option value="light">Светлая</option>
+          <option value="dark">Тёмная</option>
         </select>
         <button :disabled="isEditMode" @click="run">Запустить</button>
         <button :disabled="isEditMode" @click="reset">Сбросить</button>
@@ -517,12 +586,67 @@ function applyEditorEdit(
 </template>
 
 <style scoped>
-.app-shell { padding: 24px; display: grid; gap: 20px; }
+.app-shell { max-width: 1440px; margin: 0 auto; padding: 24px; display: grid; gap: 20px; }
 header, main { display: grid; gap: 20px; }
-header { grid-template-columns: 1fr auto; align-items: center; }
-.toolbar { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+header { grid-template-columns: minmax(0, 1fr) auto; align-items: start; }
+header h1 { margin: 0; font-size: clamp(2rem, 2.8vw, 2.8rem); }
+header p { margin: 8px 0 0; color: var(--muted-text); }
+.toolbar { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; justify-content: flex-end; }
+button:not(.cell),
+select,
+input:not([type='range']),
+textarea {
+  border-radius: 12px;
+  border: 1px solid var(--control-border);
+  background: var(--control-background);
+  color: var(--control-text);
+  transition:
+    background 0.16s ease,
+    border-color 0.16s ease,
+    color 0.16s ease,
+    box-shadow 0.16s ease,
+    opacity 0.16s ease;
+}
+button:not(.cell),
+select {
+  min-height: 42px;
+  padding: 0 14px;
+}
+button:not(.cell) { cursor: pointer; }
+button:not(.cell):hover,
+select:hover,
+input:not([type='range']):hover {
+  background: var(--control-background-hover);
+  border-color: var(--control-border-strong);
+}
+button:not(.cell):focus-visible,
+select:focus-visible,
+input:not([type='range']):focus-visible,
+textarea:focus-visible {
+  outline: none;
+  border-color: var(--control-border-strong);
+  box-shadow: 0 0 0 3px var(--control-focus-ring);
+}
+button:not(.cell):disabled,
+select:disabled,
+input:disabled {
+  cursor: not-allowed;
+  background: var(--control-disabled-background);
+  color: var(--control-disabled-text);
+  border-color: var(--control-border);
+  opacity: 0.78;
+}
+.theme-select { min-width: 140px; }
 main { grid-template-columns: minmax(320px, 1.1fr) minmax(320px, 1fr); }
-.panel { background: rgba(16, 23, 47, 0.92); border: 1px solid rgba(145, 190, 255, 0.18); border-radius: 20px; padding: 20px; box-shadow: 0 16px 40px rgba(0,0,0,.25); }
+.panel {
+  background: var(--panel-background);
+  border: 1px solid var(--panel-border);
+  border-radius: 20px;
+  padding: 20px;
+  box-shadow: var(--panel-shadow);
+  backdrop-filter: blur(18px);
+}
+.panel h2 { margin: 0 0 16px; }
 .editor-shell {
   --editor-line-height: 1.5;
   --editor-padding: 16px;
@@ -530,8 +654,8 @@ main { grid-template-columns: minmax(320px, 1.1fr) minmax(320px, 1fr); }
   display: grid;
   grid-template-columns: auto minmax(0, 1fr);
   align-items: stretch;
-  background: #09101f;
-  border: 1px solid #22345f;
+  background: var(--editor-shell-background);
+  border: 1px solid var(--editor-shell-border);
   border-radius: 14px;
   overflow: hidden;
 }
@@ -549,12 +673,12 @@ textarea {
 .line-numbers {
   position: relative;
   width: 72px;
-  background: rgba(19, 32, 63, 0.85);
-  color: #6f86b5;
+  background: var(--editor-line-number-background);
+  color: var(--editor-line-number-text);
   text-align: right;
   user-select: none;
   overflow: hidden;
-  border-right: 1px solid rgba(34, 52, 95, 0.9);
+  border-right: 1px solid var(--editor-shell-border);
 }
 .line-numbers-content {
   position: absolute;
@@ -573,7 +697,7 @@ textarea {
   width: max-content;
   min-width: 100%;
   padding: var(--editor-padding);
-  color: #dce9ff;
+  color: var(--editor-overlay-text);
   font: var(--editor-font);
   line-height: var(--editor-line-height);
   white-space: pre;
@@ -584,7 +708,7 @@ textarea {
 .editor-overlay-error {
   text-decoration-line: underline;
   text-decoration-style: wavy;
-  text-decoration-color: #f87171;
+  text-decoration-color: var(--editor-error);
   text-decoration-thickness: 1.5px;
   text-underline-offset: 3px;
 }
@@ -594,7 +718,7 @@ textarea {
   width: 100%;
   background: transparent;
   color: transparent;
-  caret-color: #dce9ff;
+  caret-color: var(--editor-caret);
   -webkit-text-fill-color: transparent;
   border: 0;
   padding: var(--editor-padding);
@@ -618,13 +742,14 @@ textarea {
 .world-zoom-controls { margin-bottom: 12px; }
 .zoom-label { font-weight: 600; }
 .zoom-range { display: inline-flex; align-items: center; flex: 1 1 220px; max-width: 280px; }
+.zoom-range input { accent-color: var(--accent-color); }
 .zoom-range input { width: 100%; }
-.zoom-value { min-width: 52px; font-variant-numeric: tabular-nums; color: #9bb8ef; }
+.zoom-value { min-width: 52px; font-variant-numeric: tabular-nums; color: var(--muted-text); }
 .grid-scroll {
   overflow: auto;
   padding: 4px;
   border-radius: 16px;
-  background: rgba(9, 16, 31, 0.45);
+  background: var(--grid-scroll-background);
 }
 .grid {
   display: grid;
@@ -640,8 +765,8 @@ textarea {
   aspect-ratio: 1 / 1;
   border-radius: 0;
   border-style: solid;
-  background: #13203f;
-  color: #9bb8ef;
+  background: var(--cell-background);
+  color: var(--cell-text);
   position: relative;
   overflow: visible;
   padding: clamp(6px, calc(var(--cell-size) * 0.11), 10px);
@@ -655,8 +780,8 @@ textarea {
   opacity: 0.75;
   pointer-events: none;
 }
-.cell.painted { background: linear-gradient(135deg, #f472b6, #8b5cf6); color: white; }
-.cell.robot { box-shadow: inset 0 0 0 2px #f8fafc; }
+.cell.painted { background: var(--painted-cell-background); color: var(--painted-cell-text); }
+.cell.robot { box-shadow: inset 0 0 0 2px var(--robot-ring); }
 .robot-icon {
   position: absolute;
   left: 50%;
@@ -667,21 +792,45 @@ textarea {
   pointer-events: none;
 }
 .wall-toggle { position: absolute; background: transparent; transition: background .15s ease, box-shadow .15s ease; z-index: 3; }
-.wall-toggle:hover { background: rgba(125, 211, 252, 0.18); }
+.wall-toggle:hover { background: var(--wall-hover); }
 .wall-toggle.active,
 .wall-toggle.active:hover { background: transparent; }
 .wall-v { right: calc(var(--wall-hit-area) / -2); top: 0; width: var(--wall-hit-area); height: calc(100% - var(--corner-dead-zone)); cursor: col-resize; }
 .wall-h { left: 0; bottom: calc(var(--wall-hit-area) / -2); width: calc(100% - var(--corner-dead-zone)); height: var(--wall-hit-area); cursor: row-resize; }
 .corner-dead-zone { position: absolute; right: calc(var(--corner-dead-zone) / -2); bottom: calc(var(--corner-dead-zone) / -2); width: var(--corner-dead-zone); height: var(--corner-dead-zone); z-index: 4; }
 .edit-tools { display: grid; gap: 10px; margin-bottom: 12px; }
-.edit-instructions { background: rgba(9, 16, 31, 0.8); border: 1px solid rgba(125, 211, 252, 0.24); border-radius: 12px; padding: 12px; }
+.edit-instructions { background: var(--instruction-background); border: 1px solid var(--instruction-border); border-radius: 12px; padding: 12px; }
 .edit-instructions p { margin: 0; }
 .tool-group { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
-.secondary-action { background: transparent; color: inherit; border: 1px solid rgba(145, 190, 255, 0.3); }
+.secondary-action { background: transparent; color: inherit; border: 1px solid var(--secondary-border); }
+.secondary-action:hover { background: var(--control-background-hover); }
 .resize-controls label { display: inline-flex; align-items: center; gap: 6px; }
-.resize-controls input { width: 72px; background: #09101f; color: #dce9ff; border: 1px solid #22345f; border-radius: 8px; padding: 4px 8px; }
-.errors { color: #fca5a5; }
+.resize-controls input {
+  width: 72px;
+  min-height: 38px;
+  background: var(--input-background);
+  color: var(--input-text);
+  border: 1px solid var(--input-border);
+  border-radius: 8px;
+  padding: 4px 8px;
+}
+.errors { color: var(--error-text); }
 .errors li + li { margin-top: 4px; }
-.console-panel pre { white-space: pre-wrap; margin: 0; background: #09101f; border-radius: 12px; padding: 16px; }
-@media (max-width: 900px) { main, header { grid-template-columns: 1fr; } }
+.console-panel pre {
+  white-space: pre-wrap;
+  margin: 0;
+  background: var(--console-background);
+  border-radius: 12px;
+  padding: 16px;
+}
+@media (max-width: 900px) {
+  main,
+  header {
+    grid-template-columns: 1fr;
+  }
+
+  .toolbar {
+    justify-content: flex-start;
+  }
+}
 </style>

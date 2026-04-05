@@ -1,9 +1,105 @@
 :root {
-  color-scheme: dark;
   font-family: Inter, ui-sans-serif, system-ui, sans-serif;
-  background: #0b1020;
-  color: #e5eefc;
+  --app-background: radial-gradient(circle at top, #ffffff, #e7edf8 55%);
+  --text-primary: #18304f;
+  --muted-text: #5d7396;
+  --panel-background: rgba(255, 255, 255, 0.88);
+  --panel-border: rgba(124, 148, 186, 0.28);
+  --panel-shadow: 0 18px 40px rgba(46, 75, 118, 0.14);
+  --control-background: rgba(255, 255, 255, 0.92);
+  --control-background-hover: #f7faff;
+  --control-border: #bfd0eb;
+  --control-border-strong: #82a6da;
+  --control-focus-ring: rgba(74, 133, 214, 0.18);
+  --control-text: #18304f;
+  --control-disabled-background: #eef3fb;
+  --control-disabled-text: #91a3c0;
+  --input-background: #ffffff;
+  --input-border: #bfd0eb;
+  --input-text: #18304f;
+  --editor-shell-background: #f7faff;
+  --editor-shell-border: #bfd0eb;
+  --editor-line-number-background: #eef4ff;
+  --editor-line-number-text: #7288a8;
+  --editor-overlay-text: #173557;
+  --editor-caret: #173557;
+  --editor-error: #dc2626;
+  --grid-scroll-background: rgba(220, 230, 247, 0.68);
+  --cell-background: #f7fbff;
+  --cell-text: #5d7396;
+  --painted-cell-background: linear-gradient(135deg, #ff8db5, #7c5cff);
+  --painted-cell-text: #ffffff;
+  --robot-ring: #18304f;
+  --wall-color-active: #1d88c6;
+  --wall-color-idle: #9eb1cf;
+  --wall-hover: rgba(49, 120, 199, 0.18);
+  --instruction-background: rgba(248, 250, 255, 0.95);
+  --instruction-border: rgba(74, 133, 214, 0.22);
+  --secondary-border: rgba(124, 148, 186, 0.55);
+  --error-text: #cc3846;
+  --console-background: #eef4ff;
+  --accent-color: #2b7ddd;
 }
+
+html[data-theme='light'] {
+  color-scheme: light;
+}
+
+html[data-theme='dark'] {
+  color-scheme: dark;
+  --app-background: radial-gradient(circle at top, #17203d, #0b1020 55%);
+  --text-primary: #e5eefc;
+  --muted-text: #9bb8ef;
+  --panel-background: rgba(16, 23, 47, 0.92);
+  --panel-border: rgba(145, 190, 255, 0.18);
+  --panel-shadow: 0 16px 40px rgba(0, 0, 0, 0.25);
+  --control-background: rgba(19, 32, 63, 0.9);
+  --control-background-hover: #1a2a50;
+  --control-border: #22345f;
+  --control-border-strong: #3d5f9c;
+  --control-focus-ring: rgba(125, 211, 252, 0.18);
+  --control-text: #dce9ff;
+  --control-disabled-background: #111b35;
+  --control-disabled-text: #6f86b5;
+  --input-background: #09101f;
+  --input-border: #22345f;
+  --input-text: #dce9ff;
+  --editor-shell-background: #09101f;
+  --editor-shell-border: #22345f;
+  --editor-line-number-background: rgba(19, 32, 63, 0.85);
+  --editor-line-number-text: #6f86b5;
+  --editor-overlay-text: #dce9ff;
+  --editor-caret: #dce9ff;
+  --editor-error: #f87171;
+  --grid-scroll-background: rgba(9, 16, 31, 0.45);
+  --cell-background: #13203f;
+  --cell-text: #9bb8ef;
+  --painted-cell-background: linear-gradient(135deg, #f472b6, #8b5cf6);
+  --painted-cell-text: #ffffff;
+  --robot-ring: #f8fafc;
+  --wall-color-active: #7dd3fc;
+  --wall-color-idle: #27406f;
+  --wall-hover: rgba(125, 211, 252, 0.18);
+  --instruction-background: rgba(9, 16, 31, 0.8);
+  --instruction-border: rgba(125, 211, 252, 0.24);
+  --secondary-border: rgba(145, 190, 255, 0.3);
+  --error-text: #fca5a5;
+  --console-background: #09101f;
+  --accent-color: #7dd3fc;
+}
+
 * { box-sizing: border-box; }
-body { margin: 0; min-height: 100vh; background: radial-gradient(circle at top, #17203d, #0b1020 55%); }
+
+html,
+body {
+  min-height: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--app-background);
+  color: var(--text-primary);
+  transition: background 0.2s ease, color 0.2s ease;
+}
+
 button, input, textarea, select { font: inherit; }

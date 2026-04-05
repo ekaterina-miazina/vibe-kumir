@@ -17,6 +17,50 @@ test('app runs example without console errors', async ({ page }) => {
   expect(pageErrors).toEqual([])
 })
 
+test('app follows the system theme when there is no saved preference', async ({ page }) => {
+  await page.addInitScript(() => {
+    window.localStorage.removeItem('vibe-kumir-theme')
+  })
+
+  await page.emulateMedia({ colorScheme: 'dark' })
+  await page.goto('/')
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark')
+
+  await page.emulateMedia({ colorScheme: 'light' })
+  await page.reload()
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'light')
+})
+
+test('saved theme preference persists and overrides the system theme', async ({ page }) => {
+  await page.emulateMedia({ colorScheme: 'dark' })
+  await page.goto('/')
+
+  const themeSelect = page.getByLabel('Тема оформления')
+  await themeSelect.selectOption('light')
+
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'light')
+  expect(await page.evaluate(() => window.localStorage.getItem('vibe-kumir-theme'))).toBe('light')
+
+  await page.reload()
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'light')
+
+  await themeSelect.selectOption('system')
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark')
+  expect(await page.evaluate(() => window.localStorage.getItem('vibe-kumir-theme'))).toBe('system')
+})
+
+test('theme switching keeps the main workflow usable', async ({ page }) => {
+  await page.goto('/')
+
+  await page.getByLabel('Тема оформления').selectOption('light')
+
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'light')
+  await expect(page.getByTestId('world-grid')).toBeVisible()
+
+  await page.getByRole('button', { name: 'Запустить' }).click()
+  await expect(page.locator('pre')).toContainText('done')
+})
+
 test('editor shows line numbers and parse errors include the source line', async ({ page }) => {
   await page.goto('/')
 
