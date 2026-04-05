@@ -27,7 +27,7 @@ const examples = {
 const code = ref(examples.line)
 const world = ref(RobotWorld.create(6, 4))
 const draftWorld = ref<RobotWorld | null>(null)
-const logs = ref<string[]>(['VibeKumir готов — создано с vibe-coding ✨'])
+const logs = ref<string[]>(['ВайбКумир готов — создано с vibe-coding ✨'])
 const errors = ref<string[]>([])
 
 const isEditMode = ref(false)
@@ -166,7 +166,7 @@ function cellLabel(x: number, y: number) {
   <div class="app-shell">
     <header>
       <div>
-        <h1>VibeKumir</h1>
+        <h1>ВайбКумир</h1>
         <p>Клиентская среда Робота, созданная с vibe-coding.</p>
       </div>
       <div class="toolbar">

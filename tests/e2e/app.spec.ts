@@ -10,7 +10,7 @@ test('app runs example without console errors', async ({ page }) => {
   page.on('pageerror', (error) => pageErrors.push(error.message))
 
   await page.goto('/')
-  await expect(page.getByRole('heading', { name: 'VibeKumir' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'ВайбКумир' })).toBeVisible()
   await page.getByRole('button', { name: 'Запустить' }).click()
   await expect(page.locator('pre')).toContainText('done')
   expect(consoleErrors).toEqual([])
