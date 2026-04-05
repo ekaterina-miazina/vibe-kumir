@@ -75,6 +75,11 @@ Default local dev server:
 - Do not move core execution logic into template expressions. Keep logic in script functions.
 - Keep labels and user-facing messages consistent. The code editor uses Russian program syntax, while some UI labels may still be English; avoid accidental mixed renames without updating tests.
 
+## Git workflow
+
+- Write commit messages in Russian.
+- Prefer descriptive commit messages that briefly explain what was changed, rather than terse generic summaries.
+
 ## Change checklist
 
 Before finishing work, verify the relevant items:
@@ -84,4 +89,3 @@ Before finishing work, verify the relevant items:
 - any new syntax is reflected in AST, parser, interpreter, and tests
 - UI labels referenced by Playwright tests still match expectations
 - no change breaks the fixed dev port `4173`
-
