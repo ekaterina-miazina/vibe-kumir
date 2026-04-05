@@ -34,6 +34,54 @@ test('editor shows line numbers and parse errors include the source line', async
   await expect(page.getByText('Строка 4: Неизвестная команда: прыжок')).toBeVisible()
 })
 
+test('editor auto-indents new lines and supports shift+tab', async ({ page }) => {
+  await page.goto('/')
+
+  const editor = page.getByTestId('code-editor')
+  await editor.fill(`использовать Робот
+алг test
+нач`)
+  await editor.press('End')
+  await editor.press('Enter')
+
+  await expect(editor).toHaveValue(`использовать Робот
+алг test
+нач
+  `)
+
+  await page.keyboard.type('если клетка чистая то')
+  await editor.press('Enter')
+  await expect(editor).toHaveValue(`использовать Робот
+алг test
+нач
+  если клетка чистая то
+    `)
+
+  await page.keyboard.type('закрасить')
+  await editor.press('Enter')
+  await page.keyboard.type('все')
+  await editor.press('Enter')
+  await expect(editor).toHaveValue(`использовать Робот
+алг test
+нач
+  если клетка чистая то
+    закрасить
+  все
+  `)
+
+  await editor.press('Tab')
+  await page.keyboard.type('вправо')
+  await editor.press('Shift+Tab')
+
+  await expect(editor).toHaveValue(`использовать Робот
+алг test
+нач
+  если клетка чистая то
+    закрасить
+  все
+  вправо`)
+})
+
 test('editor overlay stays in sync with textarea scrolling', async ({ page }) => {
   await page.goto('/')
 

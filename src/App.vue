@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, nextTick, ref } from 'vue'
+import { applyEnterIndentation, applyTabIndentation } from './editor/indentation'
 import { parseProgram, type ParseDiagnostic } from './core/language/parser'
 import { runProgram } from './core/runtime/interpreter'
 import { RobotWorld } from './core/robot/world'
@@ -298,6 +299,45 @@ function syncEditorScroll() {
   editorScrollTop.value = editorRef.value.scrollTop
   editorScrollLeft.value = editorRef.value.scrollLeft
 }
+
+function onEditorKeydown(event: KeyboardEvent) {
+  const target = event.target as HTMLTextAreaElement | null
+  if (!target) return
+
+  if (event.key === 'Enter') {
+    event.preventDefault()
+    applyEditorEdit(
+      target,
+      applyEnterIndentation(code.value, target.selectionStart, target.selectionEnd),
+    )
+    return
+  }
+
+  if (event.key === 'Tab') {
+    event.preventDefault()
+    applyEditorEdit(
+      target,
+      applyTabIndentation(code.value, target.selectionStart, target.selectionEnd, event.shiftKey),
+    )
+  }
+}
+
+function applyEditorEdit(
+  target: HTMLTextAreaElement,
+  result: { value: string; selectionStart: number; selectionEnd: number },
+) {
+  const { scrollTop, scrollLeft } = target
+  code.value = result.value
+
+  void nextTick(() => {
+    if (!editorRef.value) return
+    editorRef.value.focus()
+    editorRef.value.setSelectionRange(result.selectionStart, result.selectionEnd)
+    editorRef.value.scrollTop = scrollTop
+    editorRef.value.scrollLeft = scrollLeft
+    syncEditorScroll()
+  })
+}
 </script>
 
 <template>
@@ -351,6 +391,7 @@ function syncEditorScroll() {
               spellcheck="false"
               wrap="off"
               data-testid="code-editor"
+              @keydown="onEditorKeydown"
               @scroll="syncEditorScroll"
             />
           </div>
