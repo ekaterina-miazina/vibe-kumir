@@ -14,13 +14,17 @@ const predicateMap: Record<string, RobotPredicate> = {
 }
 
 interface SourceLine {
+  rawText: string
   text: string
   line: number
+  contentStart: number
 }
 
 export interface ParseDiagnostic {
   message: string
   line?: number
+  startOffset?: number
+  endOffset?: number
 }
 
 export interface ParseResult {
@@ -28,10 +32,19 @@ export interface ParseResult {
   errors: ParseDiagnostic[]
 }
 
+interface SourceRange {
+  startOffset: number
+  endOffset: number
+}
+
+type ExpressionParseResult =
+  | { expression: Expression }
+  | { errorRange: SourceRange }
+
 export function parseProgram(source: string): ParseResult {
   const lines = source
     .split('\n')
-    .map((line, index) => ({ text: line.trim(), line: index + 1 }))
+    .map((rawText, index) => createSourceLine(rawText, index + 1))
 
   const start = lines.findIndex((line) => line.text.startsWith('алг '))
   const begin = lines.findIndex((line) => line.text === 'нач')
@@ -47,7 +60,7 @@ export function parseProgram(source: string): ParseResult {
 
   if (errors.length > 0) return { errors }
   if (nextIndex !== body.length) {
-    return { errors: [{ message: 'Не удалось разобрать программу до конца.', line: body[nextIndex]?.line }] }
+    return { errors: [createDiagnostic('Не удалось разобрать программу до конца.', body[nextIndex])] }
   }
 
   return { program: { algorithmName, statements }, errors: [] }
@@ -81,7 +94,15 @@ function parseBlock(lines: SourceLine[], index: number, stopWords: Set<string>):
     if (sourceLine.text.startsWith('если ') && sourceLine.text.endsWith(' то')) {
       const conditionText = sourceLine.text.slice(5, -3).trim()
       const condition = parseExpression(conditionText)
-      if (!condition) return [statements, index, [{ message: `Неизвестное условие: ${conditionText}`, line: sourceLine.line }]]
+      if ('errorRange' in condition) {
+        const conditionStart = sourceLine.text.indexOf(conditionText, 5)
+        return [statements, index, [createDiagnostic(
+          `Неизвестное условие: ${conditionText}`,
+          sourceLine,
+          conditionStart + condition.errorRange.startOffset,
+          conditionStart + condition.errorRange.endOffset,
+        )]]
+      }
       const [thenBranch, thenIndex, thenErrors] = parseBlock(lines, index + 1, new Set(['иначе', 'все']))
       if (thenErrors.length > 0) return [statements, thenIndex, thenErrors]
       let elseBranch: Statement[] = []
@@ -93,9 +114,9 @@ function parseBlock(lines: SourceLine[], index: number, stopWords: Set<string>):
         cursor = elseIndex
       }
       if (lines[cursor]?.text !== 'все') {
-        return [statements, cursor, [{ message: 'Ожидалось слово "все".', line: sourceLine.line }]]
+        return [statements, cursor, [createDiagnostic('Ожидалось слово "все".', sourceLine)]]
       }
-      statements.push({ kind: 'if', condition, thenBranch, elseBranch, line: sourceLine.line })
+      statements.push({ kind: 'if', condition: condition.expression, thenBranch, elseBranch, line: sourceLine.line })
       index = cursor + 1
       continue
     }
@@ -105,7 +126,7 @@ function parseBlock(lines: SourceLine[], index: number, stopWords: Set<string>):
       const [body, next, bodyErrors] = parseBlock(lines, index + 1, new Set(['кц']))
       if (bodyErrors.length > 0) return [statements, next, bodyErrors]
       if (lines[next]?.text !== 'кц') {
-        return [statements, next, [{ message: 'Ожидалось слово "кц".', line: sourceLine.line }]]
+        return [statements, next, [createDiagnostic('Ожидалось слово "кц".', sourceLine)]]
       }
       statements.push({ kind: 'repeat', count: Number(repeatMatch[1]), body, line: sourceLine.line })
       index = next + 1
@@ -115,18 +136,26 @@ function parseBlock(lines: SourceLine[], index: number, stopWords: Set<string>):
     const whileMatch = sourceLine.text.match(/^нц\s+пока\s+(.+)$/)
     if (whileMatch) {
       const condition = parseExpression(whileMatch[1])
-      if (!condition) return [statements, index, [{ message: `Неизвестное условие: ${whileMatch[1]}`, line: sourceLine.line }]]
+      if ('errorRange' in condition) {
+        const conditionStart = sourceLine.text.indexOf(whileMatch[1], sourceLine.text.indexOf('пока') + 'пока'.length)
+        return [statements, index, [createDiagnostic(
+          `Неизвестное условие: ${whileMatch[1]}`,
+          sourceLine,
+          conditionStart + condition.errorRange.startOffset,
+          conditionStart + condition.errorRange.endOffset,
+        )]]
+      }
       const [body, next, bodyErrors] = parseBlock(lines, index + 1, new Set(['кц']))
       if (bodyErrors.length > 0) return [statements, next, bodyErrors]
       if (lines[next]?.text !== 'кц') {
-        return [statements, next, [{ message: 'Ожидалось слово "кц".', line: sourceLine.line }]]
+        return [statements, next, [createDiagnostic('Ожидалось слово "кц".', sourceLine)]]
       }
-      statements.push({ kind: 'while', condition, body, line: sourceLine.line })
+      statements.push({ kind: 'while', condition: condition.expression, body, line: sourceLine.line })
       index = next + 1
       continue
     }
 
-    return [statements, index, [{ message: `Неизвестная команда: ${sourceLine.text}`, line: sourceLine.line }]]
+    return [statements, index, [createDiagnostic(`Неизвестная команда: ${sourceLine.text}`, sourceLine)]]
   }
 
   return [statements, index, errors]
@@ -139,15 +168,52 @@ function findLastLineIndex(lines: SourceLine[], value: string) {
   return -1
 }
 
+function createSourceLine(rawText: string, line: number): SourceLine {
+  const firstNonWhitespace = rawText.search(/\S/)
+  return {
+    rawText,
+    text: rawText.trim(),
+    line,
+    contentStart: firstNonWhitespace === -1 ? rawText.length : firstNonWhitespace,
+  }
+}
+
+function createDiagnostic(
+  message: string,
+  sourceLine?: SourceLine,
+  startOffset = 0,
+  endOffset = sourceLine?.text.length ?? 0,
+): ParseDiagnostic {
+  if (!sourceLine) return { message }
+  const range = toRawRange(sourceLine, { startOffset, endOffset })
+  return { message, line: sourceLine.line, startOffset: range.startOffset, endOffset: range.endOffset }
+}
+
+function toRawRange(sourceLine: SourceLine, range: SourceRange): SourceRange {
+  const startOffset = clamp(range.startOffset, 0, sourceLine.text.length)
+  const endOffset = clamp(range.endOffset, startOffset, sourceLine.text.length)
+  return {
+    startOffset: sourceLine.contentStart + startOffset,
+    endOffset: sourceLine.contentStart + endOffset,
+  }
+}
+
+function clamp(value: number, min: number, max: number) {
+  return Math.max(min, Math.min(max, value))
+}
+
 function parseDirection(line: string) {
   return ({ вверх: 'up', вниз: 'down', влево: 'left', вправо: 'right' } as const)[line]
 }
 
-function parseExpression(text: string): Expression | null {
+function parseExpression(text: string): ExpressionParseResult {
   const normalized = text.trim()
   if (normalized.startsWith('не ')) {
     const value = parseExpression(normalized.slice(3))
-    return value ? { kind: 'not', value } : null
+    if ('errorRange' in value) {
+      return { errorRange: shiftRange(value.errorRange, 3) }
+    }
+    return { expression: { kind: 'not', value: value.expression } }
   }
 
   for (const op of [' или ', ' и '] as const) {
@@ -155,11 +221,30 @@ function parseExpression(text: string): Expression | null {
     if (idx !== -1) {
       const left = parseExpression(normalized.slice(0, idx))
       const right = parseExpression(normalized.slice(idx + op.length))
-      if (!left || !right) return null
-      return { kind: 'binary', op: op.trim() === 'и' ? 'and' : 'or', left, right }
+      if ('errorRange' in left) return { errorRange: left.errorRange }
+      if ('errorRange' in right) {
+        return { errorRange: shiftRange(right.errorRange, idx + op.length) }
+      }
+      return {
+        expression: {
+          kind: 'binary',
+          op: op.trim() === 'и' ? 'and' : 'or',
+          left: left.expression,
+          right: right.expression,
+        },
+      }
     }
   }
 
   const predicate = predicateMap[normalized]
-  return predicate ? { kind: 'predicate', predicate } : null
+  return predicate
+    ? { expression: { kind: 'predicate', predicate } }
+    : { errorRange: { startOffset: 0, endOffset: normalized.length } }
+}
+
+function shiftRange(range: SourceRange, offset: number): SourceRange {
+  return {
+    startOffset: range.startOffset + offset,
+    endOffset: range.endOffset + offset,
+  }
 }

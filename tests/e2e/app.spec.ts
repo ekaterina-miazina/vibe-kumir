@@ -30,7 +30,34 @@ test('editor shows line numbers and parse errors include the source line', async
   прыжок
 кон`)
 
+  await expect(page.getByTestId('editor-error-underline')).toHaveText('прыжок')
   await expect(page.getByText('Строка 4: Неизвестная команда: прыжок')).toBeVisible()
+})
+
+test('editor overlay stays in sync with textarea scrolling', async ({ page }) => {
+  await page.goto('/')
+
+  await page.getByTestId('code-editor').fill(`использовать Робот
+алг test
+нач
+${Array.from({ length: 40 }, () => `${' '.repeat(80)}закрасить`).join('\n')}
+кон`)
+
+  const scrollState = await page.getByTestId('code-editor').evaluate((element: HTMLTextAreaElement) => {
+    element.scrollTop = 180
+    element.scrollLeft = 120
+    element.dispatchEvent(new Event('scroll'))
+    return { top: element.scrollTop, left: element.scrollLeft }
+  })
+
+  await expect(page.getByTestId('editor-line-numbers-content')).toHaveAttribute(
+    'style',
+    new RegExp(`translateY\\(-${scrollState.top}px\\)`),
+  )
+  await expect(page.getByTestId('editor-overlay-content')).toHaveAttribute(
+    'style',
+    new RegExp(`translate\\(-${scrollState.left}px, -${scrollState.top}px\\)`),
+  )
 })
 
 test('runtime errors include the source line', async ({ page }) => {

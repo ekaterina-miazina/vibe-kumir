@@ -30,7 +30,8 @@ const draftWorld = ref<RobotWorld | null>(null)
 const logs = ref<string[]>(['ВайбКумир готов — создано с vibe-coding ✨'])
 const runtimeErrors = ref<ParseDiagnostic[]>([])
 const editorRef = ref<HTMLTextAreaElement | null>(null)
-const lineNumbersRef = ref<HTMLDivElement | null>(null)
+const editorScrollTop = ref(0)
+const editorScrollLeft = ref(0)
 
 const isEditMode = ref(false)
 const resizeWidth = ref(world.value.data.width)
@@ -42,6 +43,13 @@ const parseErrors = computed(() => parsedProgram.value.errors)
 const formattedParseErrors = computed(() => parseErrors.value.map(formatDiagnostic))
 const formattedRuntimeErrors = computed(() => runtimeErrors.value.map(formatDiagnostic))
 const visibleWorld = computed(() => (isEditMode.value && draftWorld.value ? draftWorld.value : world.value))
+const highlightedEditorLines = computed(() => buildEditorLines(code.value, parseErrors.value))
+const lineNumbersStyle = computed(() => ({
+  transform: `translateY(${-editorScrollTop.value}px)`,
+}))
+const editorOverlayStyle = computed(() => ({
+  transform: `translate(${-editorScrollLeft.value}px, ${-editorScrollTop.value}px)`,
+}))
 
 function loadExample(key: keyof typeof examples) {
   code.value = examples[key]
@@ -172,9 +180,95 @@ function formatDiagnostic(diagnostic: ParseDiagnostic) {
   return diagnostic.line ? `Строка ${diagnostic.line}: ${diagnostic.message}` : diagnostic.message
 }
 
+function buildEditorLines(source: string, diagnostics: ParseDiagnostic[]) {
+  const sourceLines = source.split('\n')
+  const rangesByLine = new Map<number, Array<{ startOffset: number; endOffset: number }>>()
+
+  for (const diagnostic of diagnostics) {
+    if (
+      diagnostic.line === undefined ||
+      diagnostic.startOffset === undefined ||
+      diagnostic.endOffset === undefined
+    ) {
+      continue
+    }
+
+    const lineText = sourceLines[diagnostic.line - 1] ?? ''
+    const startOffset = Math.max(0, Math.min(diagnostic.startOffset, lineText.length))
+    const endOffset = Math.max(startOffset, Math.min(diagnostic.endOffset, lineText.length))
+    if (startOffset === endOffset) continue
+
+    const lineRanges = rangesByLine.get(diagnostic.line) ?? []
+    lineRanges.push({ startOffset, endOffset })
+    rangesByLine.set(diagnostic.line, lineRanges)
+  }
+
+  return sourceLines.map((lineText, index) => ({
+    key: `line-${index + 1}`,
+    segments: buildLineSegments(lineText, normalizeRanges(rangesByLine.get(index + 1) ?? []), index),
+  }))
+}
+
+function normalizeRanges(ranges: Array<{ startOffset: number; endOffset: number }>) {
+  const sortedRanges = [...ranges].sort((left, right) => left.startOffset - right.startOffset)
+  const mergedRanges: Array<{ startOffset: number; endOffset: number }> = []
+
+  for (const range of sortedRanges) {
+    const lastRange = mergedRanges[mergedRanges.length - 1]
+    if (!lastRange || range.startOffset > lastRange.endOffset) {
+      mergedRanges.push({ ...range })
+      continue
+    }
+    lastRange.endOffset = Math.max(lastRange.endOffset, range.endOffset)
+  }
+
+  return mergedRanges
+}
+
+function buildLineSegments(
+  lineText: string,
+  ranges: Array<{ startOffset: number; endOffset: number }>,
+  lineIndex: number,
+) {
+  if (ranges.length === 0) {
+    return [{ key: `segment-${lineIndex}-plain`, text: lineText, isError: false }]
+  }
+
+  const segments: Array<{ key: string; text: string; isError: boolean }> = []
+  let cursor = 0
+
+  for (const range of ranges) {
+    if (range.startOffset > cursor) {
+      segments.push({
+        key: `segment-${lineIndex}-${cursor}-plain`,
+        text: lineText.slice(cursor, range.startOffset),
+        isError: false,
+      })
+    }
+
+    segments.push({
+      key: `segment-${lineIndex}-${range.startOffset}-error`,
+      text: lineText.slice(range.startOffset, range.endOffset),
+      isError: true,
+    })
+    cursor = range.endOffset
+  }
+
+  if (cursor < lineText.length) {
+    segments.push({
+      key: `segment-${lineIndex}-${cursor}-tail`,
+      text: lineText.slice(cursor),
+      isError: false,
+    })
+  }
+
+  return segments
+}
+
 function syncEditorScroll() {
-  if (!editorRef.value || !lineNumbersRef.value) return
-  lineNumbersRef.value.scrollTop = editorRef.value.scrollTop
+  if (!editorRef.value) return
+  editorScrollTop.value = editorRef.value.scrollTop
+  editorScrollLeft.value = editorRef.value.scrollLeft
 }
 </script>
 
@@ -200,19 +294,38 @@ function syncEditorScroll() {
       <section class="panel">
         <h2>Редактор кода</h2>
         <div class="editor-shell">
-          <div ref="lineNumbersRef" class="line-numbers" data-testid="editor-line-numbers" aria-hidden="true">
-            <div v-for="lineNumber in lineNumbers" :key="lineNumber" class="line-number" data-testid="editor-line-number">
-              {{ lineNumber }}
+          <div class="line-numbers" data-testid="editor-line-numbers" aria-hidden="true">
+            <div class="line-numbers-content" data-testid="editor-line-numbers-content" :style="lineNumbersStyle">
+              <div v-for="lineNumber in lineNumbers" :key="lineNumber" class="line-number" data-testid="editor-line-number">
+                {{ lineNumber }}
+              </div>
             </div>
           </div>
-          <textarea
-            ref="editorRef"
-            v-model="code"
-            spellcheck="false"
-            wrap="off"
-            data-testid="code-editor"
-            @scroll="syncEditorScroll"
-          />
+          <div class="editor-pane">
+            <div class="editor-overlay" data-testid="editor-overlay" aria-hidden="true">
+              <div class="editor-overlay-content" data-testid="editor-overlay-content" :style="editorOverlayStyle">
+                <div v-for="line in highlightedEditorLines" :key="line.key" class="editor-overlay-line">
+                  <span
+                    v-for="segment in line.segments"
+                    :key="segment.key"
+                    class="editor-overlay-segment"
+                    :class="{ 'editor-overlay-error': segment.isError }"
+                    :data-testid="segment.isError ? 'editor-error-underline' : undefined"
+                  >
+                    {{ segment.text }}
+                  </span>
+                </div>
+              </div>
+            </div>
+            <textarea
+              ref="editorRef"
+              v-model="code"
+              spellcheck="false"
+              wrap="off"
+              data-testid="code-editor"
+              @scroll="syncEditorScroll"
+            />
+          </div>
         </div>
         <ul v-if="formattedParseErrors.length" class="errors">
           <li v-for="error in formattedParseErrors" :key="error">{{ error }}</li>
@@ -319,13 +432,19 @@ main { grid-template-columns: minmax(320px, 1.1fr) minmax(320px, 1fr); }
   overflow: hidden;
 }
 .line-numbers,
+.editor-pane,
 textarea {
   min-height: 420px;
   font: var(--editor-font);
   line-height: var(--editor-line-height);
 }
+.editor-pane {
+  position: relative;
+  min-width: 0;
+}
 .line-numbers {
-  padding: var(--editor-padding) 12px var(--editor-padding) 16px;
+  position: relative;
+  width: 72px;
   background: rgba(19, 32, 63, 0.85);
   color: #6f86b5;
   text-align: right;
@@ -333,11 +452,46 @@ textarea {
   overflow: hidden;
   border-right: 1px solid rgba(34, 52, 95, 0.9);
 }
+.line-numbers-content {
+  position: absolute;
+  inset: 0;
+  padding: var(--editor-padding) 12px var(--editor-padding) 16px;
+  will-change: transform;
+}
 .line-number { white-space: pre; }
+.editor-overlay {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+.editor-overlay-content {
+  width: max-content;
+  min-width: 100%;
+  padding: var(--editor-padding);
+  color: #dce9ff;
+  font: var(--editor-font);
+  line-height: var(--editor-line-height);
+  white-space: pre;
+  will-change: transform;
+}
+.editor-overlay-line { min-height: calc(1em * var(--editor-line-height)); }
+.editor-overlay-segment { white-space: pre; }
+.editor-overlay-error {
+  text-decoration-line: underline;
+  text-decoration-style: wavy;
+  text-decoration-color: #f87171;
+  text-decoration-thickness: 1.5px;
+  text-underline-offset: 3px;
+}
 textarea {
+  position: relative;
+  z-index: 1;
   width: 100%;
   background: transparent;
-  color: #dce9ff;
+  color: transparent;
+  caret-color: #dce9ff;
+  -webkit-text-fill-color: transparent;
   border: 0;
   padding: var(--editor-padding);
   resize: vertical;

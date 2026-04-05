@@ -21,6 +21,7 @@ describe('parser', () => {
   })
 
   it('reports source line for unknown command even with blank lines', () => {
+    const invalidLine = '  прыжок'
     const result = parseProgram(`использовать Робот
 алг test
 нач
@@ -29,10 +30,16 @@ describe('parser', () => {
   прыжок
 кон`)
 
-    expect(result.errors).toEqual([{ message: 'Неизвестная команда: прыжок', line: 6 }])
+    expect(result.errors).toEqual([{
+      message: 'Неизвестная команда: прыжок',
+      line: 6,
+      startOffset: invalidLine.indexOf('прыжок'),
+      endOffset: invalidLine.indexOf('прыжок') + 'прыжок'.length,
+    }])
   })
 
   it('reports control structure line when closing word is missing', () => {
+    const openingLine = '  если клетка чистая то'
     const result = parseProgram(`использовать Робот
 алг test
 нач
@@ -40,7 +47,49 @@ describe('parser', () => {
     закрасить
 кон`)
 
-    expect(result.errors).toEqual([{ message: 'Ожидалось слово "все".', line: 4 }])
+    expect(result.errors).toEqual([{
+      message: 'Ожидалось слово "все".',
+      line: 4,
+      startOffset: openingLine.indexOf('если'),
+      endOffset: openingLine.length,
+    }])
+  })
+
+  it('reports the exact condition range for unknown predicates', () => {
+    const openingLine = '  если не телепорт то'
+    const condition = 'не телепорт'
+    const invalidFragment = 'телепорт'
+    const result = parseProgram(`использовать Робот
+алг test
+нач
+  если не телепорт то
+    закрасить
+  все
+кон`)
+
+    expect(result.errors).toEqual([{
+      message: `Неизвестное условие: ${condition}`,
+      line: 4,
+      startOffset: openingLine.indexOf(invalidFragment),
+      endOffset: openingLine.indexOf(invalidFragment) + invalidFragment.length,
+    }])
+  })
+
+  it('reports loop opening line when closing word is missing', () => {
+    const openingLine = '  нц 2 раз'
+    const result = parseProgram(`использовать Робот
+алг test
+нач
+  нц 2 раз
+    закрасить
+кон`)
+
+    expect(result.errors).toEqual([{
+      message: 'Ожидалось слово "кц".',
+      line: 4,
+      startOffset: openingLine.indexOf('нц'),
+      endOffset: openingLine.length,
+    }])
   })
 })
 
