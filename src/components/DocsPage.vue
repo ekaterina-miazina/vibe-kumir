@@ -4,6 +4,7 @@ import { onBeforeUnmount, ref } from 'vue'
 const emit = defineEmits<{
   openMain: []
 }>()
+const mainHref = import.meta.env.BASE_URL
 
 const languageSections = [
   {
@@ -166,7 +167,7 @@ function copyButtonLabel(id: string) {
         </p>
       </div>
       <a
-        href="/"
+        :href="mainHref"
         class="docs-link"
         data-testid="back-to-main-link"
         @click.prevent="emit('openMain')"

@@ -34,10 +34,14 @@ test('documentation page opens, copies examples, and returns to the main screen'
   await page.goto('/')
   await page.getByTestId('open-docs-link').click()
 
-  await expect(page).toHaveURL(/\/docs$/)
+  await expect(page).toHaveURL(/#docs$/)
   await expect(page.getByRole('heading', { name: 'Документация по языку' })).toBeVisible()
   await expect(page.getByText('Поддерживаемые инструкции')).toBeVisible()
   await expect(page.getByTestId('docs-example-move-to-wall')).toBeVisible()
+
+  await page.reload()
+  await expect(page).toHaveURL(/#docs$/)
+  await expect(page.getByRole('heading', { name: 'Документация по языку' })).toBeVisible()
 
   await page.getByTestId('copy-example-move-to-wall').click()
   await expect(page.getByTestId('copy-example-move-to-wall')).toHaveText('Скопировано')

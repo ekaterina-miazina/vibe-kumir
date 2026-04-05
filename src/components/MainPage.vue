@@ -16,6 +16,7 @@ const emit = defineEmits<{
   'update:themePreference': [value: ThemePreference]
   openDocs: []
 }>()
+const docsHref = `${import.meta.env.BASE_URL}#docs`
 
 const examples = {
   line: `использовать Робот
@@ -444,7 +445,7 @@ function getFieldRobotRingColor(value: string) {
         <h1>ВайбКумир</h1>
         <p>Клиентская среда Робота, созданная с vibe-coding.</p>
         <a
-          href="/docs"
+          :href="docsHref"
           class="nav-link"
           data-testid="open-docs-link"
           @click.prevent="emit('openDocs')"

@@ -8,12 +8,13 @@ type ResolvedTheme = 'light' | 'dark'
 type ViewName = 'main' | 'docs'
 
 const themeStorageKey = 'vibe-kumir-theme'
+const appBasePath = normalizeBasePath(import.meta.env.BASE_URL)
 const themePreference = ref<ThemePreference>('system')
 const systemTheme = ref<ResolvedTheme>(getSystemTheme())
 const resolvedTheme = computed<ResolvedTheme>(() =>
   themePreference.value === 'system' ? systemTheme.value : themePreference.value,
 )
-const currentView = ref<ViewName>(getViewFromPath(window.location.pathname))
+const currentView = ref<ViewName>(getViewFromLocation(window.location))
 
 let colorSchemeQuery: MediaQueryList | null = null
 
@@ -50,24 +51,24 @@ onBeforeUnmount(() => {
 })
 
 function navigateTo(view: ViewName) {
-  const path = view === 'docs' ? '/docs' : '/'
+  const path = buildPathForView(view)
   currentView.value = view
 
-  if (window.location.pathname !== path) {
+  if (buildCurrentLocationKey(window.location) !== path) {
     window.history.pushState({}, '', path)
   }
 }
 
 function onPopState() {
-  currentView.value = getViewFromPath(window.location.pathname)
+  currentView.value = getViewFromLocation(window.location)
 }
 
 function normalizeCurrentPath() {
-  const normalizedView = getViewFromPath(window.location.pathname)
-  const normalizedPath = normalizedView === 'docs' ? '/docs' : '/'
+  const normalizedView = getViewFromLocation(window.location)
+  const normalizedPath = buildPathForView(normalizedView)
   currentView.value = normalizedView
 
-  if (window.location.pathname !== normalizedPath) {
+  if (buildCurrentLocationKey(window.location) !== normalizedPath) {
     window.history.replaceState({}, '', normalizedPath)
   }
 }
@@ -91,8 +92,43 @@ function onSystemThemeChange(event: MediaQueryListEvent) {
   systemTheme.value = event.matches ? 'dark' : 'light'
 }
 
-function getViewFromPath(pathname: string): ViewName {
-  return pathname === '/docs' ? 'docs' : 'main'
+function getViewFromLocation(location: Location): ViewName {
+  const hashRoute = getViewFromHash(location.hash)
+  if (hashRoute) {
+    return hashRoute
+  }
+
+  return getViewFromPathname(location.pathname)
+}
+
+function getViewFromHash(hash: string): ViewName | null {
+  const normalizedHash = hash.replace(/^#\/?/, '').replace(/\/+$/, '')
+  if (normalizedHash === '') return 'main'
+  return normalizedHash === 'docs' ? 'docs' : null
+}
+
+function getViewFromPathname(pathname: string): ViewName {
+  const normalizedPath = pathname.replace(/\/+$/, '') || '/'
+  const docsPaths = new Set<string>(['/docs'])
+
+  if (appBasePath !== '/') {
+    docsPaths.add(`${appBasePath.replace(/\/$/, '')}/docs`)
+  }
+
+  return docsPaths.has(normalizedPath) ? 'docs' : 'main'
+}
+
+function buildPathForView(view: ViewName) {
+  return view === 'docs' ? `${appBasePath}#docs` : appBasePath
+}
+
+function buildCurrentLocationKey(location: Location) {
+  return `${location.pathname}${location.hash}`
+}
+
+function normalizeBasePath(baseUrl: string) {
+  if (!baseUrl || baseUrl === './') return '/'
+  return baseUrl.endsWith('/') ? baseUrl : `${baseUrl}/`
 }
 </script>
 
